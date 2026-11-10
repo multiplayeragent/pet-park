@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pet Park</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #7cc35a; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #2a2238; user-select: none; -webkit-user-select: none; }
+  canvas#game { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; cursor: pointer; }
+  .hud { position: fixed; pointer-events: none; color: #fff; text-shadow: 0 1px 3px #000c; }
+  #left { top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); width: min(250px, 56vw); }
+  #petName { font-size: 19px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meter { height: 8px; margin-top: 4px; border-radius: 6px; background: #0004; overflow: hidden; box-shadow: 0 1px 3px #0005; }
+  .meter i { display: block; height: 100%; width: 0; border-radius: 6px; transition: width .3s; }
+  #xpBar i { background: #ffd23f; } #foodBar i { background: #ff8a65; }
+  #stats { font-size: 12px; font-weight: 700; margin-top: 3px; }
+  #saved { font-size: 12px; opacity: 0; transition: opacity .5s; } #saved.on { opacity: .85; }
+  #right { top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); text-align: right; max-width: 40vw; }
+  #net { font-size: 12px; font-weight: 600; } #event { font-size: 13px; font-weight: 800; color: #ffe066; }
+  #toast { z-index: 5; top: 22%; left: 16px; right: 16px; text-align: center; font-size: 20px; font-weight: 800; opacity: 0; transition: opacity .35s; }
+  #toast.on { opacity: 1; }
+  #hint { left: 16px; right: 16px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 74px); text-align: center; font-size: 15px; font-weight: 700; transition: opacity .8s; }
+  #bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+         width: min(470px, calc(100vw - 24px)); box-sizing: border-box; }
+  button { min-height: 48px; border: 0; border-radius: 14px; background: #fffaf2; color: #2a2238; font: 700 14px system-ui, sans-serif; box-shadow: 0 2px 6px #0003; cursor: pointer; touch-action: manipulation; }
+  #bar button { padding: 4px 2px; line-height: 1.1; } #bar button b { display: block; font-size: 20px; }
+  #bar button.on { background: #ffd23f; } #bar button:disabled { opacity: .5; }
+  .panel { position: fixed; inset: 0; display: grid; place-items: center; background: #2a223866; }
+  .card { width: min(380px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; box-sizing: border-box; padding: 18px; border-radius: 18px; background: #fffaf2; text-align: center; box-shadow: 0 10px 30px #0005; }
+  .card h2 { margin: 0 0 4px; font-size: 22px; } .card p { margin: 6px 0; font-size: 14px; color: #5d5470; }
+  .card input { width: 100%; box-sizing: border-box; height: 46px; margin: 8px 0; border: 2px solid #e8dcc8; border-radius: 12px; padding: 0 12px; font: 700 17px system-ui, sans-serif; text-align: center; background: #fff; }
+  .go { width: 100%; margin-top: 8px; background: #ff8a3d; color: #fff; box-shadow: none; font-size: 17px; }
+  .ghost { width: 100%; margin-top: 8px; background: #f1e9db; box-shadow: none; }
+  #choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  #choices button { padding: 4px; background: #f6eedf; box-shadow: none; font-size: 12px; } #choices button.on { outline: 3px solid #ff8a3d; background: #fff1d6; }
+  #choices canvas, #portrait { display: block; width: 100%; height: auto; }
+  .trick { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px; border-bottom: 1px solid #efe5d3; text-align: left; font-weight: 700; }
+  .trick span { color: #8a809c; font-size: 13px; font-weight: 600; } .trick button { min-width: 84px; min-height: 44px; box-shadow: none; background: #ffe7b8; }
+  #meter { position: relative; height: 34px; margin: 10px 0; border-radius: 17px; background: #efe5d3; overflow: hidden; }
+  #zone { position: absolute; top: 0; bottom: 0; background: #7ed957; }
+  #needle { position: absolute; top: 3px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; background: #ff8a3d; box-shadow: 0 2px 4px #0004; }
+  #hits { font-size: 22px; letter-spacing: 4px; }
+  .card ol { text-align: left; margin: 12px 0; padding-left: 26px; font-size: 14px; min-height: 40px; } .card li span { float: right; }
+  [hidden] { display: none !important; }
+  .attract .hud, .attract #bar { display: none !important; }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud" id="left">
+  <div id="petName"></div>
+  <div class="meter" id="xpBar"><i></i></div><div class="meter" id="foodBar"><i></i></div>
+  <div id="stats"></div><div id="saved">✓ Pet saved</div>
+</div>
+<div class="hud" id="right"><div id="net">Connecting…</div><div id="event"></div></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="hint"></div>
+<div id="bar">
+  <button id="throwBtn"><b>🎾</b>Throw</button>
+  <button id="feedBtn"><b>🍖</b>Feed</button>
+  <button id="trickBtn"><b>✨</b>Tricks</button>
+  <button id="petBtn"><b>🐾</b>My pet</button>
+  <button id="topBtn"><b>🏆</b>Top</button>
+</div>
+<div class="panel" id="adopt" hidden><div class="card">
+  <h2>Adopt a pet</h2><p>Pick one and give it a name. It's yours to keep.</p>
+  <div id="choices"></div>
+  <button class="ghost" id="reroll">Show me other pets</button>
+  <input id="petNameIn" maxlength="14" placeholder="Name your pet" aria-label="Your pet's name">
+  <button class="go" id="adoptGo">Adopt!</button>
+</div></div>
+<div class="panel" id="tricks" hidden><div class="card">
+  <h2>Tricks</h2>
+  <div id="trickList"></div>
+  <div id="teach" hidden>
+    <p id="teachText"></p>
+    <div id="meter"><i id="zone"></i><b id="needle"></b></div>
+    <div id="hits"></div>
+    <button class="go" id="nowBtn">Now!</button>
+  </div>
+  <button class="ghost" data-close="tricks">Close</button>
+</div></div>
+<div class="panel" id="petCard" hidden><div class="card">
+  <canvas id="portrait" width="300" height="190"></canvas>
+  <input id="renameIn" maxlength="14" aria-label="Rename your pet">
+  <p id="petStats"></p>
+  <button class="ghost" id="readopt">Adopt a different pet</button>
+  <button class="go" data-close="petCard">Close</button>
+</div></div>
+<div class="panel" id="topPanel" hidden><div class="card">
+  <h2>Top pets</h2><p>Pet XP, all time</p><ol id="board"><li>Loading…</li></ol><p id="myXp"></p>
+  <button class="go" data-close="topPanel">Back to the park</button>
+</div></div>
+<script>
+/* ═══ PET PARK · a Multiplayer Agent starter ═════════════════════════════════════════
+ * Adopt a pet, teach it tricks, show it off. Drop-in, 2–20 players; bot owners walk their pets.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ speeds, XP for everything, levels, the tricks, bots, the park map
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host, live ops
+ *   MAP ........... the park map, walking routes, painting the park once into a picture
+ *   PETS .......... a pet's looks (a few random picks), drawing it, its brain, the ball
+ *   PARK (HOST) ... bones hidden in the grass, bot owners and their pets, cheers from bots
+ *   ME ............ walking, throwing the ball, feeding, tricks and teaching, cheering pets
+ *   SAVES ......... your pet, its XP and its tricks (player.data; localStorage offline)
+ *   DRAW .......... camera, people, pets, balls, bowls, bones, hearts, name tags
+ *   HUD & PANELS .. name/XP/food bars, adopt screen, tricks + teaching, pet card, top pets
+ *   INPUT ......... tap to walk, tap a pet to cheer it, Throw/Feed/Tricks, keyboard
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `p` (one JSON field: you and your pet — positions,
+ *     facing, what the pet is doing, its trick counter, the ball, the food bowl) about 10
+ *     times a second, `look` (your name and color; your pet's looks, name and level) and
+ *     `hb` (heartbeat) once a second.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s),
+ *     worked out every frame. Only the host writes the shared fields `bones` (bones hidden in
+ *     the grass + who found the last ones), `bots` (bot owners and pets, ~6 times a second),
+ *     `botLooks` (their names and pets) and `botChat` (what they last said), the last two only
+ *     when they change. A new host adopts all of it.
+ *   - Intent to the host: "grab" {k} (my pet found bone k). The host checks the pet is next to
+ *     it and writes [k, you] into bones.got; you get the XP when you see your id there.
+ *   - "pat" {to, by} is an event to everyone: hearts over pet `to`, and its owner counts a
+ *     cheer. Bots cheer people's pets the same way (the host sends it, `by` = the bot).
+ *   - Your pet is YOUR save, not room state: player.data (namespace CONFIG.saveNs) keeps its
+ *     looks, name, XP and tricks. Offline it lives in localStorage.
+ *   - Live ops: mp.live.config.xpBoost multiplies all XP; an active event's title shows.
+ *   - ?attract plays offline with bots only (the preview video is recorded from it).
+ *   - Leaderboard "pet-xp": each player's pet XP.
+ */
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  speed: 3.6,              // tiles per second you walk
+  petSpeed: 5.2,           // tiles per second a pet runs (+0.2 per level, slower when hungry)
+  seats: 6,                // bot owners fill the park up to this many people (keep it ≤ 10: all bots share one field)
+  bones: 4,                // bones the host keeps hidden in the grass
+  boneEvery: 6000,         // ms between new bones
+  sniffRange: 3.5,         // tiles: a pet smells a bone this close and runs to it
+  throwMax: 7,             // tiles: the farthest throw
+  feedEveryMs: 20000,      // a pet can eat this often
+  hungerMs: 600000,        // ms from a full belly to an empty one
+  trickMs: 1600,           // how long a trick takes
+  teachHits: 3,            // good taps to learn a trick
+  showOffRange: 6,         // tiles: a trick earns "show off" XP when another pet is this close
+  xpBoost: 1,              // every XP gain is multiplied by this (live config: xpBoost)
+  xp: { fetch: 5, catch: 4, feed: 3, teach: 3, learn: 10, show: 3, cheer: 3, bone: 6, pat: 1 },
+  levels: [0, 20, 50, 90, 140, 200, 280, 380, 500, 650], // XP to reach level 1, 2, … 10
+  tricks: [ // learned in order; each needs the pet to be this level
+    { id: "sit", name: "Sit", level: 1 }, { id: "spin", name: "Spin", level: 2 }, { id: "roll", name: "Roll over", level: 3 },
+    { id: "paw", name: "High five", level: 4 }, { id: "jump", name: "Jump", level: 5 }, { id: "dead", name: "Play dead", level: 6 },
+    { id: "dance", name: "Dance", level: 7 }, { id: "flip", name: "Backflip", level: 8 },
+  ],
+  botLines: ["Who's a good pet?", "Fetch!", "What a cute pet!", "Lovely day for a walk", "Good job!", "Want to play?", "Nice catch!", "So fluffy!"],
+  board: "pet-xp",         // leaderboard name
+  saveNs: "pet-park",      // player-save namespace
+  saveEveryMs: 10000,
+  // The park. . grass  , flowers  = path  ~ pond  T tree  O fountain  b bench
+  map: [
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "T..,......T....==....,.....T...T",
+    "T..............==..............T",
+    "T...T....,.....==......T....,..T",
+    "T..............==..............T",
+    "T.,......T.....==...,.......T..T",
+    "T..............==..............T",
+    "T.....T.....b..==..b.....T.....T",
+    "T...........========...........T",
+    "T..,........========.......,...T",
+    "T==============OO==============T",
+    "T==============OO==============T",
+    "T...........========...........T",
+    "T....,......========.....,.....T",
+    "T...........b..==..b...........T",
+    "T..~~~~~.......==.....T........T",
+    "T.~~~~~~~......==..........,...T",
+    "T.~~~~~~~...T..==...T..........T",
+    "T..~~~~~.......==.......,....T.T",
+    "T....,.........==..............T",
+    "T.....T........==......T.......T",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+  ],
+  spawn: { x: 13.5, y: 12.6 },
+};
+const COLORS = ["#e74c3c", "#3498db", "#f1c40f", "#2ecc71", "#9b59b6", "#ff7f50", "#1abc9c", "#ff6fb5", "#34495e", "#e67e22"];
+const BOT_NAMES = ["Ava", "Leo", "Mia", "Sam", "Ivy", "Noah", "Zoe", "Kai", "Ruby", "Finn"];
+const PET_NAMES = ["Biscuit", "Mochi", "Pepper", "Noodle", "Waffles", "Pickles", "Bean", "Luna", "Ziggy", "Muffin", "Pumpkin", "Tofu", "Sprout", "Nugget", "Maple", "Olive", "Cocoa", "Pixel"];
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'pet-park',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+if (ATTRACT) Object.assign(CONFIG, { seats: 7, bones: 5, boneEvery: 1500 });
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true, live: { config: {}, active: [] },
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {}, onLive() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+const cache = new Map();
+/** A JSON field (shared or a player's), parsed once per change. Read-only: never mutate what this returns. */
+function field(key, raw, fb) { const m = cache.get(key); if (m && m.raw === raw) return m.v; const v = parse(raw, fb); cache.set(key, { raw, v }); return v; }
+let net = null, player = null, board = null, S = { entities: { players: {} }, shared: {} };
+const seenHb = new Map(); // sessionId -> { hb, at } on OUR clock
+/** Players whose heartbeat moved in the last 3s (plus us), sorted by sessionId. */
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+const isHost = () => livePlayers()[0] === net.sessionId;
+const xpBoost = () => Math.max(0.1, Math.min(10, Number(net && net.live && net.live.config && net.live.config.xpBoost) || CONFIG.xpBoost));
+
+// ── MAP ─────────────────────────────────────────────────────────────────────────────
+const T = 36, MAP = CONFIG.map, MW = MAP[0].length, MH = MAP.length;
+const at = (x, y) => (MAP[y] && MAP[y][x]) || "T";
+const solid = (x, y) => "T~Ob".includes(at(x, y));
+const free = (x, y) => !solid(Math.floor(x), Math.floor(y));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const rnd = (a, b) => a + Math.random() * (b - a), pick = (l) => l[Math.floor(Math.random() * l.length)];
+const ease = (k) => 1 - Math.pow(1 - Math.max(0, Math.min(1, k)), 3);
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+/** A walkable route from a to b as tile centres (ending at b), or [] if there is none. */
+function route(a, b) {
+  const sx = Math.floor(a.x), sy = Math.floor(a.y), gx = Math.floor(b.x), gy = Math.floor(b.y), goal = gx + gy * MW;
+  if (solid(gx, gy)) return [];
+  if (solid(sx, sy)) return [{ x: b.x, y: b.y }];
+  const prev = new Int32Array(MW * MH).fill(-1), q = [sx + sy * MW];
+  prev[q[0]] = q[0];
+  for (let h = 0; h < q.length && prev[goal] < 0; h++) {
+    const k = q[h], x = k % MW, y = (k / MW) | 0;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy, n = nx + ny * MW;
+      if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || solid(nx, ny) || prev[n] >= 0 || (dx && dy && (solid(x + dx, y) || solid(x, y + dy)))) continue;
+      prev[n] = k; q.push(n);
+    }
+  }
+  if (prev[goal] < 0) return [];
+  const out = [{ x: b.x, y: b.y }];
+  for (let k = prev[goal]; k !== prev[k]; k = prev[k]) out.unshift({ x: (k % MW) + 0.5, y: ((k / MW) | 0) + 0.5 });
+  return out;
+}
+/** The nearest free tile centre to (x, y). */
+function nearestFree(x, y) {
+  x = Math.max(1, Math.min(MW - 2, x)); y = Math.max(1, Math.min(MH - 2, y));
+  for (let r = 0; r < 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!solid(Math.floor(x) + dx, Math.floor(y) + dy)) return { x: Math.floor(x) + dx + 0.5, y: Math.floor(y) + dy + 0.5 };
+  return CONFIG.spawn;
+}
+function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+/** Paint the whole park once into a picture; every frame just shows the part on screen. */
+function paintPark() {
+  const c = document.createElement("canvas"); c.width = MW * T; c.height = MH * T;
+  const g = c.getContext("2d"), r = mulberry32(11), circle = (x, y, rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill(); };
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const ch = at(x, y), px = x * T, py = y * T;
+    if (ch === "=" || ch === "O") { g.fillStyle = "#e9d6ab"; g.fillRect(px, py, T, T); for (let i = 0; i < 3; i++) { g.fillStyle = r() < 0.5 ? "#dcc596" : "#f2e3bf"; g.fillRect(px + r() * 28, py + r() * 28, 8, 5); } continue; }
+    if (ch === "~") {
+      g.fillStyle = "#4aa8e0"; g.fillRect(px, py, T, T);
+      g.fillStyle = "#cdeaf8"; for (const [dx, dy, w, h] of [[0, -1, T, 4], [0, 1, T, 4], [-1, 0, 4, T], [1, 0, 4, T]]) if (at(x + dx, y + dy) !== "~") g.fillRect(px + (dx > 0 ? T - 4 : 0), py + (dy > 0 ? T - 4 : 0), w, h);
+      continue;
+    }
+    g.fillStyle = (x + y) % 2 ? "#86c95f" : "#8acc62"; g.fillRect(px, py, T, T);
+    for (let i = 0; i < 3; i++) { g.fillStyle = "#73b852"; g.fillRect(px + r() * 30, py + r() * 30, 2, 4); }
+    if (ch === ",") for (let i = 0; i < 4; i++) circle(px + 7 + r() * 22, py + 7 + r() * 22, 3.5, pick(["#ff6fb5", "#ffd23f", "#fff", "#c77dff", "#ff8a65"]));
+    if (ch === "b") { g.fillStyle = "#0002"; g.fillRect(px + 2, py + 20, 34, 10); g.fillStyle = "#9a6b3e"; g.fillRect(px, py + 8, T, 6); g.fillRect(px, py + 16, T, 6); g.fillStyle = "#6b4a2a"; g.fillRect(px + 3, py + 22, 4, 10); g.fillRect(px + T - 7, py + 22, 4, 10); }
+  }
+  // the fountain (its water moves: see draw)
+  const fx = 16 * T, fy = 11 * T;
+  circle(fx, fy + 4, 40, "#0002"); circle(fx, fy, 38, "#b9c3cc"); circle(fx, fy, 31, "#5fb7e8"); circle(fx, fy, 9, "#b9c3cc");
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    if (at(x, y) !== "T") continue;
+    const cx = x * T + 18, cy = y * T + 18, s = 0.85 + r() * 0.35;
+    g.fillStyle = "#0003"; g.beginPath(); g.ellipse(cx, cy + 13, 15 * s, 5, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#7a4e2a"; g.fillRect(cx - 4, cy - 2, 8, 16);
+    circle(cx, cy - 11, 16 * s, "#2e7d32"); circle(cx - 6 * s, cy - 15, 10 * s, "#43a047"); circle(cx + 7 * s, cy - 8, 9 * s, "#43a047");
+  }
+  return c;
+}
+
+// ── PETS ────────────────────────────────────────────────────────────────────────────
+// A pet's looks are a few random picks: species, fur, accent color, pattern and size.
+const SPECIES = {
+  dog: { name: "Puppy", fur: ["#f4c27a", "#d98f4e", "#8a5a3b", "#f7f1e8", "#3b3434", "#c9a27c"] },
+  cat: { name: "Kitten", fur: ["#f2a65a", "#9aa3ad", "#3b3434", "#f7f1e8", "#d9b38c"] },
+  bunny: { name: "Bunny", fur: ["#f7f1e8", "#c9a27c", "#9aa3ad", "#8a6a52", "#e8d5c4"] },
+  fox: { name: "Fox", fur: ["#e07a2f", "#d65a1f", "#c98a4a", "#9aa3ad"] },
+  bear: { name: "Bear cub", fur: ["#8a5a3b", "#5a3b2a", "#f7f1e8", "#c9a27c"] },
+};
+const ACCENTS = ["#ffffff", "#3b3434", "#f4d9b0", "#8a5a3b", "#f2a65a"], PATTERNS = ["plain", "spots", "patch", "socks", "belly", "saddle"];
+function randomPet(r = Math.random) {
+  const s = Object.keys(SPECIES)[Math.floor(r() * 5)], fur = SPECIES[s].fur[Math.floor(r() * SPECIES[s].fur.length)], acc = ACCENTS.filter((a) => a !== fur);
+  return { s, f: fur, a: s === "fox" ? "#ffffff" : acc[Math.floor(r() * acc.length)], p: s === "fox" ? "belly" : PATTERNS[Math.floor(r() * PATTERNS.length)], z: Math.round((0.92 + r() * 0.22) * 100) / 100 };
+}
+const HEX = /^#[0-9a-f]{6}$/i, PET_SCALE = 1.3; // pets are drawn this much bigger than their body sizes below
+const cleanPet = (o) => o && SPECIES[o.s] && HEX.test(o.f) && HEX.test(o.a) && PATTERNS.includes(o.p) ? { s: o.s, f: o.f, a: o.a, p: o.p, z: Math.max(0.85, Math.min(1.2, Number(o.z) || 1)) } : null;
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16), f = (c) => Math.round(Math.max(0, Math.min(255, c + (k < 0 ? c * k : (255 - c) * k)))); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; }
+const levelOf = (xp) => CONFIG.levels.filter((n) => xp >= n).length;
+const petSpeed = (lv, hungry) => (CONFIG.petSpeed + 0.2 * lv) * (hungry ? 0.7 : 1);
+
+/** A pet, paws at (x, y) in px. look: {s, f, a, p, z}. st: {dir, anim (idle|run|sit|eat), phase, trick, tt 0…1, carry, collar, happy}. */
+function drawPet(g, x, y, look, st, now) {
+  const z = (look.z || 1) * PET_SCALE, s = look.s, tr = st.trick, k = st.tt || 0, fur = look.f, acc = look.a, dark = shade(fur, -0.3);
+  const sit = (st.anim === "sit" && !tr) || tr === "sit", eat = st.anim === "eat" && !tr;
+  let lift = st.anim === "run" ? Math.abs(Math.sin(st.phase)) * (s === "bunny" ? 7 : 2.5) : 0, rot = 0, flip = 1;
+  if (tr === "spin") flip = Math.cos(k * Math.PI * 4);
+  if (tr === "roll") { rot = ease(k) * Math.PI * 2; lift = 2; }
+  if (tr === "jump") lift = Math.sin(k * Math.PI) * 30;
+  if (tr === "flip") { lift = Math.sin(k * Math.PI) * 34; rot = -ease(k) * Math.PI * 2; }
+  if (tr === "dead") rot = Math.PI * Math.min(1, Math.min(k, 1 - k) * 6);
+  if (tr === "dance") { rot = Math.sin(k * Math.PI * 10) * 0.22; lift = Math.abs(Math.sin(k * Math.PI * 10)) * 5; }
+  if (tr === "paw") rot = -0.75 * Math.min(1, Math.sin(k * Math.PI) * 2);
+  const c = (col) => (g.fillStyle = col), dot = (px, py, r, col) => { c(col); g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill(); };
+  const oval = (px, py, rx, ry, a, col) => { c(col); g.beginPath(); g.ellipse(px, py, rx, ry, a, 0, Math.PI * 2); g.fill(); };
+  oval(x, y, 13 * z * Math.max(0.5, 1 - lift / 70), 4 * z, 0, "#0003");
+  g.save(); g.translate(x, y - lift * z); g.scale((st.dir < 0 ? -1 : 1) * z * flip, z); g.translate(0, -9); g.rotate(rot);
+  if (sit) { g.translate(-1, 2); g.rotate(-0.38); }
+  const wag = Math.sin(now / (st.happy ? 60 : 150)) * 0.5, leg = st.anim === "run" ? Math.sin(st.phase) * 3 : 0;
+  // tail
+  g.lineCap = "round"; g.strokeStyle = fur;
+  if (s === "dog") { g.lineWidth = 3.5; g.beginPath(); g.moveTo(-10, -2); g.quadraticCurveTo(-15, -4, -15 + wag * 3, -10); g.stroke(); }
+  if (s === "cat") { g.lineWidth = 3; g.beginPath(); g.moveTo(-10, -1); g.quadraticCurveTo(-19, -2, -17 + wag * 3, -14); g.stroke(); }
+  if (s === "bunny") dot(-11, -2, 4.2, "#ffffff");
+  if (s === "fox") { oval(-15, -5, 8.5, 4.2, -0.5 + wag * 0.3, fur); oval(-21 + wag, -9, 3.6, 2.6, -0.5, "#ffffff"); }
+  if (s === "bear") dot(-11, -3, 2.6, fur);
+  // legs (back, then body, then front)
+  const sock = look.p === "socks" ? acc : dark;
+  const legAt = (lx, off) => { c(fur); g.fillRect(lx - 2, 3, 4, 8 + off); c(sock); g.fillRect(lx - 2, 8 + off, 4, 3); };
+  if (!sit) { legAt(-7, leg); legAt(-4, -leg); }
+  oval(0, 0, s === "bunny" ? 10 : s === "bear" ? 12 : 11.5, s === "bear" ? 8.5 : 7.5, 0, fur);
+  if (look.p === "spots") { dot(-4, -3, 2.6, acc); dot(2, 1.5, 2, acc); dot(-8, 2, 1.8, acc); }
+  if (look.p === "belly") oval(1, 3.5, 8, 3.2, 0, acc);
+  if (look.p === "saddle") oval(-2, -4.5, 7, 3.4, 0, acc);
+  if (tr === "paw") { c(fur); g.fillRect(6, -6, 4, 10); legAt(9, 0); } else { legAt(5, -leg); legAt(8, leg); }
+  // head
+  const hx = eat ? 13 : 10, hy = eat ? -1 + Math.sin(now / 90) : -7;
+  if (s === "dog") oval(hx - 3, hy - 3, 3.2, 6.5, 0.55 + wag * 0.1, dark);
+  if (s === "cat" || s === "fox") for (const ex of [-2.5, 2.5]) { c(fur); g.beginPath(); g.moveTo(hx + ex - 3, hy - 5); g.lineTo(hx + ex, hy - (s === "fox" ? 15 : 13)); g.lineTo(hx + ex + 3, hy - 5); g.fill(); c(s === "fox" ? "#3b3434" : "#ffb3c1"); g.beginPath(); g.moveTo(hx + ex - 1.3, hy - 7); g.lineTo(hx + ex, hy - (s === "fox" ? 12.5 : 11)); g.lineTo(hx + ex + 1.3, hy - 7); g.fill(); }
+  if (s === "bunny") for (const [ex, a] of [[-2.5, -0.25], [2, 0.15]]) { oval(hx + ex, hy - 13, 2.8, 8, a, fur); oval(hx + ex, hy - 13, 1.2, 5.5, a, "#ffb3c1"); }
+  if (s === "bear") { dot(hx - 4, hy - 6, 3.3, fur); dot(hx + 3.5, hy - 6.5, 3.3, fur); dot(hx - 4, hy - 6, 1.6, dark); dot(hx + 3.5, hy - 6.5, 1.6, dark); }
+  dot(hx, hy, 7.5, fur);
+  if (s === "dog" || s === "fox" || s === "bear") oval(hx + 5, hy + 2, 4.2, 3, 0, s === "fox" ? "#ffffff" : shade(fur, 0.35));
+  if (look.p === "patch") dot(hx + 2.5, hy - 1.5, 3.4, acc);
+  if (tr === "dead" && k > 0.15 && k < 0.85) { g.strokeStyle = "#2a2238"; g.lineWidth = 1.3; g.beginPath(); g.moveTo(hx + 1, hy - 3); g.lineTo(hx + 4, hy); g.moveTo(hx + 4, hy - 3); g.lineTo(hx + 1, hy); g.stroke(); }
+  else if (sit && st.happy) { g.strokeStyle = "#2a2238"; g.lineWidth = 1.4; g.beginPath(); g.arc(hx + 2.5, hy - 1, 1.8, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+  else { dot(hx + 2.5, hy - 1.5, 1.9, "#2a2238"); dot(hx + 3.1, hy - 2.1, 0.7, "#ffffff"); }
+  dot(hx + 8.5, hy + 1, 1.7, s === "cat" || s === "bunny" ? "#ff8fa3" : "#2a2238");
+  if (st.happy && s === "dog" && !st.carry) oval(hx + 6, hy + 5.5, 1.6, 2.4, 0, "#ff6f8a");
+  c(st.collar || "#e74c3c"); g.fillRect(hx - 6, hy + 4, 4, 4.5); dot(hx - 4, hy + 9.5, 1.4, "#ffd23f");
+  if (st.carry) { dot(hx + 8, hy + 4, 3.6, "#d7f542"); g.strokeStyle = "#fff"; g.lineWidth = 0.9; g.beginPath(); g.arc(hx + 8, hy + 4, 2.3, 0.5, 2.6); g.stroke(); }
+  g.restore();
+}
+
+/** Move a walker straight toward (tx, ty), sliding along trees and water. */
+function moveToward(a, tx, ty, speed, dt) {
+  const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy), s = Math.min(d, speed * dt);
+  if (d < 1e-6) return;
+  const nx = a.x + (dx / d) * s, ny = a.y + (dy / d) * s;
+  if (free(nx, ny)) { a.x = nx; a.y = ny; } else if (free(nx, a.y)) a.x = nx; else if (free(a.x, ny)) a.y = ny; else { a.x = nx; a.y = ny; } // never stuck
+  if (Math.abs(dx) > 0.05) a.dir = dx < 0 ? -1 : 1;
+}
+/** No tree, bench, pond or fountain on the straight line from a to (tx, ty)? */
+function clearLine(a, tx, ty) { const n = Math.ceil(Math.hypot(tx - a.x, ty - a.y) * 3); for (let i = 1; i <= n; i++) if (!free(a.x + ((tx - a.x) * i) / n, a.y + ((ty - a.y) * i) / n)) return false; return true; }
+/** The ball: thrown from `from` to `to`, it flies on its own clock. s: "air" | "ground" | "pet". */
+function makeBall(k, from, to, now) { const d = Math.hypot(to.x - from.x, to.y - from.y); return { k, x0: from.x, y0: from.y, x1: to.x, y1: to.y, t0: now, dur: 300 + d * 85, h: 0.6 + d * 0.22, s: "air" }; }
+function ballPos(b, now) {
+  const k = Math.min(1, (now - b.t0) / b.dur);
+  if (k < 1) return { x: b.x0 + (b.x1 - b.x0) * k, y: b.y0 + (b.y1 - b.y0) * k, h: Math.sin(k * Math.PI) * b.h };
+  const since = (now - b.t0 - b.dur) / 1000; return { x: b.x1, y: b.y1, h: Math.abs(Math.sin(since * 9)) * 0.3 * Math.exp(-since * 4) };
+}
+/** One pet's brain: fetch the ball, eat from the bowl, sniff out bones, do tricks, follow its owner.
+ *  hooks: { caught(), fetched(caught), ate(), bone(pet) -> [k, x, y] | null, grab(k) }. */
+function petStep(pet, owner, ball, bowl, dt, now, speed, hooks) {
+  pet.anim = "idle";
+  if (pet.trick) { if (now - pet.t0 < CONFIG.trickMs) return; pet.trick = ""; }
+  const go = (tx, ty, near) => {
+    if (Math.hypot(tx - pet.x, ty - pet.y) <= near) { pet.route = null; return true; }
+    if (!clearLine(pet, tx, ty)) { // something in the way: follow a route around it
+      const key = Math.floor(tx) + "," + Math.floor(ty);
+      if (!pet.route || pet.routeKey !== key) { pet.route = route(pet, { x: tx, y: ty }); pet.routeKey = key; }
+      while (pet.route.length > 1 && Math.hypot(pet.route[0].x - pet.x, pet.route[0].y - pet.y) < 0.25) pet.route.shift();
+      if (pet.route.length) { tx = pet.route[0].x; ty = pet.route[0].y; }
+    }
+    moveToward(pet, tx, ty, speed, dt); pet.anim = "run"; pet.phase += dt * 16; return false;
+  };
+  if (ball && ball.s === "air" && now - ball.t0 >= ball.dur) ball.s = "ground";
+  if (ball && ball.s !== "pet" && pet.mode !== "eat") pet.mode = "fetch";
+  if (bowl && pet.mode !== "eat") { pet.mode = "eat"; pet.eatUntil = 0; }
+  if (pet.mode === "fetch") {
+    if (!ball) { pet.mode = "follow"; return; }
+    if (go(ball.x1, ball.y1, 0.35) && (ball.s === "ground" || now - ball.t0 > ball.dur * 0.6)) { pet.caught = ball.s === "air"; ball.s = "pet"; pet.carry = true; pet.mode = "return"; if (pet.caught && hooks.caught) hooks.caught(); }
+    return;
+  }
+  if (pet.mode === "return") {
+    if (go(owner.x + (owner.d === 1 ? -0.75 : 0.75), owner.y + 0.25, 0.35)) { pet.carry = false; pet.mode = "follow"; pet.idleAt = now; pet.happyUntil = now + 2500; hooks.fetched && hooks.fetched(pet.caught); }
+    return;
+  }
+  if (pet.mode === "eat") {
+    if (!bowl) { pet.mode = "follow"; return; }
+    if (!pet.eatUntil) { if (go(bowl.x - 0.45, bowl.y, 0.15)) { pet.eatUntil = now + 1800; pet.dir = 1; } return; }
+    pet.anim = "eat";
+    if (now > pet.eatUntil) { pet.mode = "follow"; pet.happyUntil = now + 2500; hooks.ate && hooks.ate(); }
+    return;
+  }
+  if (pet.mode === "sniff") {
+    const b = hooks.bone && hooks.bone(pet, pet.boneK);
+    if (!b) { pet.mode = "follow"; return; }
+    if (go(b[1], b[2], 0.3)) { hooks.grab(b[0]); pet.mode = "follow"; pet.happyUntil = now + 2000; }
+    return;
+  }
+  if (pet.mode === "stay") { pet.anim = "sit"; pet.dir = owner.x < pet.x ? -1 : 1; return; }
+  // follow: keep close, smell for bones, wander a little, sit when bored
+  if (dist(pet, owner) > 1.8) { go(owner.x + (pet.x < owner.x ? -0.9 : 0.9), owner.y + 0.2, 0.2); pet.idleAt = now; return; }
+  const b = hooks.bone && hooks.bone(pet, null);
+  if (b) { pet.mode = "sniff"; pet.boneK = b[0]; return; }
+  if (now > (pet.wanderAt || 0)) { pet.wanderAt = now + rnd(2500, 5500); pet.wx = owner.x + rnd(-1.4, 1.4); pet.wy = owner.y + rnd(-0.3, 0.9); }
+  if (pet.wx !== undefined && !go(pet.wx, pet.wy, 0.15)) { pet.idleAt = now; return; }
+  pet.wx = undefined;
+  if (now - (pet.idleAt || 0) > 3500) pet.anim = "sit";
+  if (Math.abs(owner.x - pet.x) > 0.2) pet.dir = owner.x < pet.x ? -1 : 1;
+}
+const newPet = (x, y) => ({ x, y, dir: 1, mode: "follow", anim: "idle", phase: 0, trick: "", t0: 0, tkk: 0, carry: false, idleAt: 0 });
+
+// ── PARK (HOST) ─────────────────────────────────────────────────────────────────────
+const host = { was: false, bones: { list: [], got: [] }, boneAt: 0, bonesDirty: false, bots: new Map(), lastPub: 0, looksJson: "", chat: [], chatK: 0, chatDirty: false, tricksSeen: new Map(), queue: [] };
+const POIS = [[8, 4], [22, 4], [5, 10.5], [27, 10.5], [10, 13], [22, 13], [12, 18], [24, 18], [16, 7], [16, 15], [20, 9], [11, 9]].map(([x, y]) => ({ x: x + 0.5, y: y + 0.5 }))
+  .filter((p) => !ATTRACT || Math.abs(p.x - 16) < 6 && Math.abs(p.y - 11) < 4.5); // ?attract keeps everyone near the fountain
+function adoptPark() {
+  host.was = true; host.bots.clear();
+  const b = field("shared:bones", S.shared.bones, null); host.bones = b ? { list: [...b.list], got: [...b.got] } : { list: [], got: [] };
+  const looks = new Map(field("shared:botLooks", S.shared.botLooks, []).map((l) => [l.i, l]));
+  host.chat = [...field("shared:botChat", S.shared.botChat, [])]; host.chatK = Math.max(0, ...host.chat.map((c) => c[0]));
+  for (const m of field("shared:bots", S.shared.bots, [])) {
+    const l = looks.get(m.i); if (!l || !cleanPet(l.pet)) continue;
+    const b2 = newBot(m.i, { name: l.n, c: l.c, x: m.x, y: m.y, d: m.d });
+    Object.assign(b2.pet, { x: m.px, y: m.py, dir: m.pd || 1, look: cleanPet(l.pet), name: l.pn, lv: l.lv });
+    host.bots.set(m.i, b2);
+  }
+}
+function newBot(id, from) {
+  const used = new Set([...host.bots.values()].map((b) => b.name)), spot = nearestFree(pick(POIS).x + rnd(-2, 2), pick(POIS).y + rnd(-1, 1));
+  const usedC = new Set([...host.bots.values()].map((b) => b.c).concat(peopleColors()));
+  const b = { id, name: BOT_NAMES.find((n) => !used.has(n)) || "Walker", c: COLORS.find((col) => !usedC.has(col)) || pick(COLORS), x: spot.x, y: spot.y, d: 0, w: 0, phase: 0, path: [], until: 0,
+    ball: null, ballK: 0, bowl: null, cheerTo: null, ...from };
+  const usedPets = new Set([...host.bots.values()].map((o) => o.pet.name));
+  b.pet = { ...newPet(b.x + 0.8, b.y + 0.2), look: randomPet(), name: PET_NAMES.find((n) => !usedPets.has(n) && Math.random() < 0.3) || pick(PET_NAMES), lv: 2 + Math.floor(Math.random() * 7) };
+  return b;
+}
+/** A bot says something: a bubble for everyone (the host keeps the last few lines in `botChat`). */
+function botSay(b, text) { host.chat.push([++host.chatK, b.id, text]); if (host.chat.length > 6) host.chat.shift(); host.chatDirty = true; said.set(b.id, { text, until: performance.now() + 3500 }); }
+/** A pet found bone k: the host checks it is really there, removes it and records who got it. */
+function applyGrab(id, k) {
+  const list = host.bones.list, i = list.findIndex((q) => q[0] === k);
+  if (i < 0) return;
+  const pet = id === net.sessionId ? myPet : host.bots.has(id) ? host.bots.get(id).pet : (() => { const p = field("p:" + id, S.entities.players[id] && S.entities.players[id].p, null); return p && { x: p.px, y: p.py }; })();
+  if (!pet || Math.hypot(pet.x - list[i][1], pet.y - list[i][2]) > 1.6) return; // too far: refused
+  list.splice(i, 1); host.bones.got.push([k, id]); if (host.bones.got.length > 12) host.bones.got.shift(); host.bonesDirty = true;
+}
+const bones = () => (isHost() && host.was ? host.bones : field("shared:bones", S.shared.bones, { list: [], got: [] }));
+/** The nearest bone a pet can smell (or bone k if it is still there). */
+function boneFor(pet, k, skip) {
+  let best = null, bd = CONFIG.sniffRange;
+  for (const q of bones().list) { if (skip && skip(q[0])) continue; if (k && q[0] === k) return q; const d = Math.hypot(q[1] - pet.x, q[2] - pet.y); if (!k && d < bd) { bd = d; best = q; } }
+  return k ? null : best;
+}
+/** A cheer: hearts over pet `to` for everyone, and its owner counts it. */
+function sendPat(to, by) { const msg = by ? { to, by } : { to }; net.send("pat", msg); onPat(msg, net.sessionId); }
+function hostTick(dt, now) {
+  if (!host.was) adoptPark();
+  const humans = livePlayers().length - (ATTRACT ? 1 : 0), want = Math.max(0, CONFIG.seats - humans);
+  while (host.bots.size > want) host.bots.delete([...host.bots.keys()].pop());
+  while (host.bots.size < want) { const id = "b" + Math.random().toString(36).slice(2, 6); host.bots.set(id, newBot(id)); }
+  if (host.bones.list.length < CONFIG.bones && now > host.boneAt) { // hide a new bone in the grass
+    host.boneAt = now + CONFIG.boneEvery;
+    for (let tries = 0; tries < 40; tries++) {
+      const x = 1 + Math.floor(Math.random() * (MW - 2)), y = 1 + Math.floor(Math.random() * (MH - 2));
+      if (".,".includes(at(x, y)) && (!ATTRACT || Math.abs(x - 16) < 8 && Math.abs(y - 11) < 5)) { host.bones.list.push([Date.now().toString(36) + Math.random().toString(36).slice(2, 5), x + 0.5, y + 0.5]); host.bonesDirty = true; break; }
+    }
+  }
+  const people = everyone().filter((o) => !o.bot);
+  if (adopted() && !ATTRACT) people.push({ id: net.sessionId, x: me.x, y: me.y, pet: { x: myPet.x, y: myPet.y, tkk: myPet.tkk, name: save.name } }); // the host's own pet counts too
+  for (const o of people) { // someone did a trick: a bot nearby may cheer
+    const seen = host.tricksSeen.get(o.id);
+    if (seen !== undefined && o.pet && o.pet.tkk > seen && Math.random() < 0.7) {
+      const fan = [...host.bots.values()].filter((b) => dist(b, o.pet) < 8).sort((a, b) => dist(a, o.pet) - dist(b, o.pet))[0];
+      if (fan) host.queue.push({ at: now + rnd(700, 1500), by: fan.id, to: o.id, text: pick(["Wow, " + o.pet.name + "!", "Bravo!", "So clever!", "Do it again!"]) });
+    }
+    if (o.pet) host.tricksSeen.set(o.id, o.pet.tkk);
+  }
+  for (const q of host.queue) if (now >= q.at && host.bots.get(q.by)) { botSay(host.bots.get(q.by), q.text); sendPat(q.to, q.by); }
+  host.queue = host.queue.filter((q) => now < q.at);
+  for (const b of host.bots.values()) botStep(b, dt, now, people);
+  if (now - host.lastPub > 160) { // ~6/s, one message for every bot; looks and bones only when they change
+    host.lastPub = now;
+    const r2 = (v) => Math.round(v * 100) / 100, ball = (b) => b && { k: b.k, x0: r2(b.x0), y0: r2(b.y0), x1: r2(b.x1), y1: r2(b.y1), s: b.s };
+    net.setShared("bots", JSON.stringify([...host.bots.values()].map((b) => ({ i: b.id, x: r2(b.x), y: r2(b.y), d: b.d, w: b.w,
+      px: r2(b.pet.x), py: r2(b.pet.y), pd: b.pet.dir, pa: b.pet.anim, pc: b.pet.carry ? 1 : 0, tk: b.pet.trick, tkk: b.pet.tkk, b: ball(b.ball), bw: b.bowl ? [r2(b.bowl.x), r2(b.bowl.y)] : 0 }))));
+    const looks = JSON.stringify([...host.bots.values()].map((b) => ({ i: b.id, n: b.name, c: b.c, pet: b.pet.look, pn: b.pet.name, lv: b.pet.lv })));
+    if (looks !== host.looksJson) { host.looksJson = looks; net.setShared("botLooks", looks); }
+    if (host.bonesDirty) { host.bonesDirty = false; net.setShared("bones", JSON.stringify(host.bones)); }
+    if (host.chatDirty) { host.chatDirty = false; net.setShared("botChat", JSON.stringify(host.chat)); }
+  }
+}
+/** A bot owner: strolls, throws the ball, shows off tricks, and goes to cheer people's pets. */
+function botStep(b, dt, now, people) {
+  if (b.path.length) { b.w = 1; b.phase += dt * 11; step(b, CONFIG.speed * 0.65, dt); } else b.w = 0;
+  petStep(b.pet, b, b.ball, b.bowl, dt, now, petSpeed(b.pet.lv, false), {
+    caught: () => botSay(b, "Nice catch, " + b.pet.name + "!"), fetched: () => { b.ball = null; b.until = Math.min(b.until, now + rnd(400, 1200)); },
+    ate: () => { b.bowl = null; }, bone: (pet, k) => boneFor(pet, k), grab: (k) => applyGrab(b.id, k),
+  });
+  if (b.cheerTo) { // walking over to cheer someone's pet
+    const o = people.find((p) => p.id === b.cheerTo);
+    if (!o || !o.pet) b.cheerTo = null;
+    else if (dist(b, o.pet) < 2.4) { b.path = []; botSay(b, pick(["What a cute pet!", "Aww, " + o.pet.name + "!", "So fluffy!", "Hello " + o.pet.name + "!"])); sendPat(o.id, b.id); b.cheerTo = null; b.until = now + rnd(1500, 3000); }
+    else if (!b.path.length) b.path = route(b, nearestFree(o.pet.x + rnd(-1, 1), o.pet.y + 1));
+    return;
+  }
+  if (b.path.length || now < b.until || b.ball || b.bowl || b.pet.trick) return;
+  const r = Math.random(), fan = people.find((o) => o.pet && dist(o.pet, b) < 9 && Math.random() < 0.5);
+  if (r < 0.42) { // play fetch
+    const to = nearestFree(b.x + rnd(-6, 6) + (ATTRACT ? (16 - b.x) * 0.6 : 0), b.y + rnd(-4, 4) + (ATTRACT ? (11 - b.y) * 0.6 : 0));
+    if (dist(to, b) > 2) { b.ball = makeBall(++b.ballK, { x: b.x, y: b.y - 0.2 }, to, now); b.d = to.x < b.x ? 1 : 2; if (Math.random() < 0.3) botSay(b, "Fetch!"); }
+    b.until = now + rnd(800, 2000);
+  } else if (r < 0.62) { // show off a trick it knows
+    const known = CONFIG.tricks.filter((t) => t.level <= b.pet.lv), t = pick(known);
+    Object.assign(b.pet, { trick: t.id, t0: now, tkk: b.pet.tkk + 1, mode: "follow" }); botSay(b, `${b.pet.name}, ${t.name.toLowerCase()}!`);
+    b.until = now + rnd(2200, 4000);
+  } else if (r < 0.7 && !b.bowl) { b.bowl = { x: b.x + 0.8, y: b.y + 0.3 }; b.until = now + 3000; }
+  else if (r < 0.8 && fan && !ATTRACT) { b.cheerTo = fan.id; }
+  else { const poi = pick(POIS); b.path = route(b, nearestFree(poi.x + rnd(-2, 2), poi.y + rnd(-1, 1))); b.until = now + rnd(800, 2500); if (Math.random() < 0.15) botSay(b, pick(CONFIG.botLines)); }
+}
+function step(a, speed, dt) {
+  const p = a.path[0], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy), s = speed * dt;
+  if (d <= s) { a.x = p.x; a.y = p.y; a.path.shift(); } else { a.x += (dx / d) * s; a.y += (dy / d) * s; }
+  if (d > 0.01) a.d = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0;
+}
+
+// ── ME ──────────────────────────────────────────────────────────────────────────────
+const me = { x: CONFIG.spawn.x, y: CONFIG.spawn.y, d: 0, w: 0, phase: 0, path: [], lastSend: 0, sent: "", ball: null, ballK: 0, bowl: null, aim: false,
+  cheerTo: null, credited: new Set(), pending: new Map(), lastShow: 0, lastPat: new Map(), patFrom: new Map(), autoAt: 0 };
+const myPet = newPet(me.x + 0.9, me.y + 0.2);
+let myLook = { n: "", c: COLORS[0] };
+const keys = new Set();
+const adopted = () => !!save.pet;
+const hungry = () => Date.now() - save.fedAt > CONFIG.hungerMs * 0.7;
+function myTick(dt, now) {
+  let mx = 0, my = 0;
+  if (!typing()) { mx = (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0); my = (keys.has("s") || keys.has("arrowdown") ? 1 : 0) - (keys.has("w") || keys.has("arrowup") ? 1 : 0); }
+  if (ATTRACT) autopilot(now);
+  if (mx || my) {
+    me.path = []; me.cheerTo = null;
+    const len = Math.hypot(mx, my), s = (CONFIG.speed * dt) / len, r = 0.25;
+    const ok = (x, y) => free(x - r, y - r) && free(x + r, y - r) && free(x - r, y + r) && free(x + r, y + r);
+    if (ok(me.x + mx * s, me.y)) me.x += mx * s;
+    if (ok(me.x, me.y + my * s)) me.y += my * s;
+    me.d = Math.abs(mx) > Math.abs(my) ? (mx < 0 ? 1 : 2) : my < 0 ? 3 : 0; me.w = 1;
+  } else if (me.path.length) { step(me, CONFIG.speed, dt); me.w = 1; } else me.w = 0;
+  if (me.w) me.phase += dt * 11;
+  if (adopted()) {
+    myPet.mode = $("tricks").hidden || myPet.mode !== "follow" ? myPet.mode : "stay";
+    if ($("tricks").hidden && myPet.mode === "stay") myPet.mode = "follow";
+    petStep(myPet, me, me.ball, me.bowl, dt, now, petSpeed(levelOf(save.xp), hungry()), {
+      fetched: (caught) => { me.ball = null; addXp(CONFIG.xp.fetch + (caught ? CONFIG.xp.catch : 0), caught ? "Nice catch!" : "Good fetch!"); sfx("yay"); },
+      ate: () => { me.bowl = null; save.fedAt = Date.now(); dirty = true; addXp(CONFIG.xp.feed, "Yum!"); },
+      bone: (pet, k) => boneFor(pet, k, (key) => now < (me.pending.get(key) || 0)),
+      grab: (k) => { me.pending.set(k, now + 3000); if (isHost()) applyGrab(net.sessionId, k); else net.send("grab", { k }); },
+    });
+    for (const [k, id] of bones().got) if (id === net.sessionId && !me.credited.has(k)) { me.credited.add(k); if (!ATTRACT) addXp(CONFIG.xp.bone, `🦴 ${save.name} found a bone!`); hearts(myPet.x, myPet.y, 3); }
+  }
+  if (me.cheerTo) { // walking over to cheer someone's pet
+    const o = everyone().find((p) => p.id === me.cheerTo);
+    if (!o) me.cheerTo = null; else if (dist(me, o.pet) < 2.4) { me.path = []; cheer(o); me.cheerTo = null; }
+  }
+  const r2 = (v) => Math.round(v * 100) / 100, b = me.ball;
+  const p = JSON.stringify({ x: r2(me.x), y: r2(me.y), d: me.d, w: me.w, px: r2(myPet.x), py: r2(myPet.y), pd: myPet.dir, pa: myPet.anim, pc: myPet.carry ? 1 : 0, tk: myPet.trick, tkk: myPet.tkk,
+    b: b ? { k: b.k, x0: r2(b.x0), y0: r2(b.y0), x1: r2(b.x1), y1: r2(b.y1), s: b.s } : 0, bw: me.bowl ? [r2(me.bowl.x), r2(me.bowl.y)] : 0 });
+  if ((p !== me.sent && now - me.lastSend > 100) || now - me.lastSend > 2000) { me.lastSend = now; me.sent = p; net.me.set("p", p); }
+}
+/** Throw the ball toward a point (as far as CONFIG.throwMax); the pet goes after it. */
+function throwAt(tx, ty) {
+  me.aim = false; $("throwBtn").classList.remove("on");
+  if (!adopted()) return;
+  if (me.ball) { toast(`Wait for ${save.name} to bring the ball back`); return; }
+  if (myPet.mode === "eat" || myPet.trick) return;
+  let dx = tx - me.x, dy = ty - me.y; const d = Math.hypot(dx, dy) || 1, k = Math.min(1, CONFIG.throwMax / d);
+  if (d < 1.2) { dx = me.d === 1 ? -3 : 3; dy = 0; }
+  const to = nearestFree(me.x + dx * k, me.y + dy * k);
+  me.ball = makeBall(++me.ballK, { x: me.x, y: me.y - 0.2 }, to, performance.now()); me.d = to.x < me.x ? 1 : 2;
+  myPet.mode = "fetch"; sfx("throw"); hideHint();
+}
+function feed() {
+  if (!adopted() || me.bowl || me.ball) return;
+  const wait = CONFIG.feedEveryMs - (Date.now() - save.fedAt);
+  if (wait > 0) { toast(`${save.name} isn't hungry yet (${Math.ceil(wait / 1000)}s)`); return; }
+  me.bowl = { x: me.x + (me.d === 1 ? -0.9 : 0.9), y: me.y + 0.35 }; sfx("throw");
+}
+/** Do a learned trick. Showing off near another pet earns a little XP. */
+function perform(id) {
+  if (!adopted() || !save.tricks[id] || myPet.mode === "eat" || me.ball) return;
+  const t = CONFIG.tricks.find((q) => q.id === id), now = performance.now();
+  Object.assign(myPet, { trick: id, t0: now, tkk: myPet.tkk + 1, mode: "follow" });
+  said.set("pet:" + net.sessionId, { text: t.name + "!", until: now + 1800 }); sfx("yay");
+  const audience = everyone().some((o) => o.pet && dist(o.pet, myPet) < CONFIG.showOffRange);
+  if (audience && now - me.lastShow > 6000 && !ATTRACT) { me.lastShow = now; addXp(CONFIG.xp.show, "Showing off!"); }
+}
+/** Cheer another pet: hearts for everyone, a cheer for its owner (at most once every 3s per pet). */
+function cheer(o) {
+  const now = performance.now();
+  if (now < (me.lastPat.get(o.id) || 0)) return;
+  me.lastPat.set(o.id, now + 3000);
+  sendPat(o.id); sfx("yay");
+}
+/** A "pat" arrived (or I sent one): hearts over that pet; if it's mine, count the cheer. */
+function onPat(m, from) {
+  if (!m || typeof m.to !== "string") return;
+  const o = m.to === net.sessionId ? { pet: myPet } : everyone().find((p) => p.id === m.to);
+  if (o && o.pet) hearts(o.pet.x, o.pet.y, 5);
+  if (isHost() && host.bots.has(m.to) && !m.by && Math.random() < 0.6) botSay(host.bots.get(m.to), pick(["Thank you!", "Aww, thanks!", host.bots.get(m.to).pet.name + " likes you!"]));
+  if (m.to !== net.sessionId || from === net.sessionId && !m.by) return;
+  const by = m.by || from, now = performance.now();
+  if (now < (me.patFrom.get(by) || 0)) return;
+  me.patFrom.set(by, now + 4000);
+  const who = m.by ? (botLooks().find((l) => l.i === m.by) || {}).n : field("look:" + from, S.entities.players[from] && S.entities.players[from].look, {}).n;
+  save.cheers = (save.cheers || 0) + 1; if (!ATTRACT) addXp(CONFIG.xp.cheer, `💖 ${String(who || "Someone").slice(0, 16)} cheered for ${save.name}!`);
+}
+function patMine() {
+  const now = performance.now();
+  hearts(myPet.x, myPet.y, 3); myPet.happyUntil = now + 2500;
+  if (now > (me.patMineAt || 0)) { me.patMineAt = now + 4000; addXp(CONFIG.xp.pat, ""); }
+}
+/** ?attract: throw, show off and stroll so the preview never idles. */
+function autopilot(now) {
+  if (now < me.autoAt || me.ball || myPet.trick || me.path.length) return;
+  me.autoAt = now + rnd(900, 1800);
+  const r = Math.random();
+  if (r < 0.55) throwAt(16 + rnd(-5, 5), 11 + rnd(-3, 3));
+  else if (r < 0.85) { const t = pick(CONFIG.tricks.slice(1)); save.tricks[t.id] = true; perform(t.id); }
+  else me.path = route(me, nearestFree(16 + rnd(-6, 6), 11 + rnd(-3, 3)));
+}
+
+// ── SAVES ───────────────────────────────────────────────────────────────────────────
+let save = { v: 1, at: 0, pet: null, name: "", xp: 0, tricks: {}, fedAt: 0, cheers: 0 }, dirty = false;
+const local = { get: () => { try { return parse(localStorage.getItem("pet-park.save"), null); } catch { return null; } }, set: (v) => { try { localStorage.setItem("pet-park.save", JSON.stringify(v)); } catch {} } };
+function applySave(s) {
+  if (!s || !cleanPet(s.pet)) return false;
+  save = { ...save, ...s, pet: cleanPet(s.pet), name: String(s.name || "Buddy").slice(0, 14), xp: Math.max(0, Number(s.xp) || 0), tricks: s.tricks && typeof s.tricks === "object" ? s.tricks : {} };
+  publishLook(); $("adopt").hidden = true;
+  return true;
+}
+async function saveNow() {
+  if (ATTRACT || !adopted()) return;
+  save.at = Date.now(); local.set(save); dirty = false;
+  const tag = $("saved"); tag.classList.add("on"); setTimeout(() => tag.classList.remove("on"), 1600);
+  if (!player) return;
+  try { await player.data.set(save, { namespace: CONFIG.saveNs }); }
+  catch (e) { if (e && e.current) player.data.set(save, { namespace: CONFIG.saveNs, version: e.current.version }).catch(() => {}); } // another device saved in between: ours is newer
+}
+async function loadAccountSave() { try { const r = await player.data.get(CONFIG.saveNs); return r && r.data && r.data.v ? r.data : null; } catch { return null; } }
+function publishLook() { if (net) net.me.set("look", JSON.stringify({ n: myLook.n, c: myLook.c, pet: save.pet, pn: save.name, lv: levelOf(save.xp) })); }
+/** XP for anything: level-ups unlock the next trick. */
+function addXp(n, why) {
+  if (!adopted()) return;
+  n = Math.max(1, Math.round(n * xpBoost()));
+  const before = levelOf(save.xp); save.xp += n; dirty = true;
+  floats.push({ x: myPet.x, y: myPet.y - 1.2, t0: performance.now(), text: `+${n} XP` });
+  const after = levelOf(save.xp);
+  if (after > before) { const t = CONFIG.tricks.find((q) => q.level === after); toast(`🎉 ${save.name} is level ${after}!${t ? ` New trick: ${t.name}` : ""}`); publishLook(); sfx("level"); hearts(myPet.x, myPet.y, 8); submitScore(true); }
+  else if (why) toast(why);
+}
+let lastSubmit = 0;
+function submitScore(force) { if (board && save.xp && (force || performance.now() - lastSubmit > 15000)) { lastSubmit = performance.now(); board.submit(save.xp).catch(() => {}); } }
+
+// ── DRAW ────────────────────────────────────────────────────────────────────────────
+const cv = document.getElementById("game"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function fit() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; }
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+const cam = { x: CONFIG.spawn.x * T, y: CONFIG.spawn.y * T, z: 1 };
+const said = new Map(), views = new Map(), balls = new Map(), floats = [], fx = [];
+const dot = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+function hearts(x, y, n) { for (let i = 0; i < n; i++) fx.push({ x: x * T + rnd(-10, 10), y: y * T - 24, vx: rnd(-25, 25), vy: rnd(-70, -40), t0: performance.now() + i * 60, life: 1100, col: pick(["#ff5d8f", "#ff8fab", "#ff4d6d"]) }); }
+function drawHeart(x, y, s, col) { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y + s * 0.9); ctx.bezierCurveTo(x - s * 1.4, y - s * 0.1, x - s * 0.6, y - s * 1.2, x, y - s * 0.4); ctx.bezierCurveTo(x + s * 0.6, y - s * 1.2, x + s * 1.4, y - s * 0.1, x, y + s * 0.9); ctx.fill(); }
+/** A person, feet at (x, y) in px. d: 0 down, 1 left, 2 right, 3 up. */
+function drawPerson(x, y, c, d, phase, walking, hair) {
+  const bob = walking ? Math.abs(Math.sin(phase)) * 2 : 0, leg = walking ? Math.sin(phase) * 3 : 0;
+  ctx.fillStyle = "#0003"; ctx.beginPath(); ctx.ellipse(x, y, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#3b3f58"; ctx.fillRect(x - 6, y - 9 - bob, 5, 8 + leg); ctx.fillRect(x + 1, y - 9 - bob, 5, 8 - leg);
+  ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(x - 9, y - 23 - bob, 18, 16, 6); ctx.fill();
+  dot(x - 9, y - 16 - bob + leg * 0.5, 3.5, c); dot(x + 9, y - 16 - bob - leg * 0.5, 3.5, c);
+  const hy = y - 31 - bob;
+  dot(x, hy, 10, "#ffdcb8");
+  ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(x, hy - 1, 10.5, Math.PI * (d === 3 ? 0 : 1.05), Math.PI * (d === 3 ? 2 : 1.95)); ctx.fill();
+  if (d !== 3) { const ox = d === 1 ? -3 : d === 2 ? 3 : 0; if (d !== 2) dot(x - 3.5 + ox, hy + 1, 1.6, "#222"); if (d !== 1) dot(x + 3.5 + ox, hy + 1, 1.6, "#222"); if (d === 0) { dot(x - 6, hy + 4, 1.8, "#ff9fb0"); dot(x + 6, hy + 4, 1.8, "#ff9fb0"); } }
+}
+const HAIR = ["#5a3a22", "#2b2118", "#c98a3a", "#8a3a22", "#e8c170", "#3b3434"];
+const hairOf = (id) => HAIR[[...String(id)].reduce((n, ch) => n + ch.charCodeAt(0), 0) % HAIR.length];
+function drawBall(b, now) {
+  const p = ballPos(b, now), sx = p.x * T, sy = p.y * T;
+  ctx.fillStyle = "#0003"; ctx.beginPath(); ctx.ellipse(sx, sy, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+  dot(sx, sy - 4 - p.h * T, 5, "#d7f542"); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(sx, sy - 4 - p.h * T, 3.2, 0.5, 2.6); ctx.stroke();
+}
+function drawBowl(x, y) { const sx = x * T, sy = y * T; ctx.fillStyle = "#0003"; ctx.beginPath(); ctx.ellipse(sx, sy + 2, 10, 3, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.ellipse(sx, sy - 2, 9, 4.5, 0, 0, Math.PI); ctx.fill(); dot(sx - 3, sy - 3, 2.5, "#a0522d"); dot(sx + 2, sy - 3.5, 2.5, "#8b4513"); dot(sx, sy - 4.5, 2.3, "#a0522d"); }
+function drawBone(x, y, t) {
+  const sx = x * T, sy = y * T + Math.sin(t * 3 + x) * 1.5;
+  ctx.save(); ctx.translate(sx, sy); ctx.rotate(0.4); ctx.fillStyle = "#fffbe8"; ctx.strokeStyle = "#c9b98f"; ctx.lineWidth = 1;
+  ctx.fillRect(-6, -2, 12, 4); for (const [bx, by] of [[-6, -2.5], [-6, 2.5], [6, -2.5], [6, 2.5]]) { ctx.beginPath(); ctx.arc(bx, by, 2.8, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  if (Math.sin(t * 2.5 + x * 3) > 0.8) { ctx.fillStyle = "#fff"; ctx.fillRect(sx + 6, sy - 9, 2, 6); ctx.fillRect(sx + 4, sy - 7, 6, 2); }
+}
+const botLooks = () => (isHost() ? [...host.bots.values()].map((b) => ({ i: b.id, n: b.name, c: b.c, pet: b.pet.look, pn: b.pet.name, lv: b.pet.lv })) : field("shared:botLooks", S.shared.botLooks, []));
+let heardK = -1, lastHeard = 0; // the last bot line I showed (-1: none yet, so old lines don't pop up when I arrive)
+/** Everyone but me: other live players and the bots, each with their pet (others eased toward their last spot). */
+function everyone(dt = 0) {
+  const out = [], live = new Set(livePlayers()), now = performance.now(), k = 1 - Math.pow(0.002, dt), hostNow = isHost();
+  const add = (id, q, info, eased) => {
+    let v = views.get(id); if (!v) { v = { x: q.x, y: q.y, px: q.px, py: q.py, phase: 0, pphase: 0, tkk: q.tkk, tt0: -1e9 }; views.set(id, v); }
+    const e = eased ? k : 1;
+    if (dt || !eased) { v.x += (q.x - v.x) * e; v.y += (q.y - v.y) * e; v.px += (q.px - v.px) * e; v.py += (q.py - v.py) * e; }
+    if (q.w) v.phase += dt * 11; if (q.pa === "run") v.pphase += dt * 16;
+    if (q.tkk !== v.tkk) { v.tkk = q.tkk; v.tt0 = now; }
+    const look = cleanPet(info.pet);
+    out.push({ id, ...info, x: v.x, y: v.y, d: q.d, w: q.w, phase: v.phase,
+      pet: look && { x: v.px, y: v.py, dir: q.pd, anim: q.pa, phase: v.pphase, trick: q.tk && now - v.tt0 < CONFIG.trickMs ? q.tk : "", tt: (now - v.tt0) / CONFIG.trickMs, carry: q.pc, tkk: q.tkk, look, name: String(info.pn || "Pet").slice(0, 14), lv: Number(info.lv) || 1 },
+      ball: ballFor(id, q.b, now), bowl: Array.isArray(q.bw) ? { x: q.bw[0], y: q.bw[1] } : null });
+  };
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    if (id === net.sessionId || !live.has(id)) continue;
+    const q = field("p:" + id, p.p, null), look = field("look:" + id, p.look, {});
+    if (q) add(id, q, { name: String(look.n ?? "Player").slice(0, 16), c: look.c || "#ccc", pet: look.pet, pn: look.pn, lv: look.lv }, true);
+  }
+  if (hostNow) for (const b of host.bots.values()) { // the host draws its bots from the live simulation
+    const pet = b.pet;
+    out.push({ id: b.id, name: b.name, c: b.c, x: b.x, y: b.y, d: b.d, w: b.w, phase: b.phase, bot: true, ball: b.ball, bowl: b.bowl,
+      pet: { ...pet, tt: (now - pet.t0) / CONFIG.trickMs, happy: now < (pet.happyUntil || 0) } });
+  } else {
+    const looks = new Map(botLooks().map((l) => [l.i, l]));
+    for (const m of field("shared:bots", S.shared.bots, [])) { const l = looks.get(m.i); if (l) add(m.i, m, { name: l.n, c: l.c, pet: l.pet, pn: l.pn, lv: l.lv, bot: true }, true); }
+    for (const [k, id, text] of field("shared:botChat", S.shared.botChat, [])) if (k > heardK) { if (heardK >= 0) said.set(id, { text: String(text).slice(0, 60), until: now + 3500 }); lastHeard = Math.max(lastHeard, k); }
+    heardK = Math.max(heardK, lastHeard);
+  }
+  return out;
+}
+/** A ball someone else threw, flown on my own clock from the moment I first saw it. */
+function ballFor(id, b, now) {
+  if (!b || !b.k) { balls.delete(id); return null; }
+  let local = balls.get(id);
+  if (!local || local.k !== b.k) { local = makeBall(b.k, { x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }, now); balls.set(id, local); }
+  local.s = b.s === "pet" ? "pet" : local.s;
+  return local;
+}
+function draw(now, dt) {
+  const t = now / 1000;
+  const z = ATTRACT ? Math.min(W / (13.5 * T), H / (7.6 * T)) : Math.max(0.9, Math.min(1.6, Math.min(W / (11 * T), H / (12 * T))));
+  cam.z = z; const halfW = W / 2 / z, halfH = H / 2 / z;
+  const focus = ATTRACT ? { x: 16 * T, y: 11 * T } : { x: me.x * T, y: me.y * T + 20 };
+  const tx = Math.max(halfW, Math.min(MW * T - halfW, focus.x)), ty = MH * T < 2 * halfH ? MH * T / 2 : Math.max(halfH, Math.min(MH * T - halfH, focus.y));
+  cam.x += ((MW * T < 2 * halfW ? MW * T / 2 : tx) - cam.x) * Math.min(1, dt * 6); cam.y += (ty - cam.y) * Math.min(1, dt * 6);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = "#2e7d32"; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, DPR * (W / 2 - cam.x * z), DPR * (H / 2 - cam.y * z));
+  ctx.drawImage(parkPic, 0, 0);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + t * 0.6, r = 16 + Math.sin(t * 3 + i) * 4; dot(16 * T + Math.cos(a) * r, 11 * T + Math.sin(a) * r * 0.9, 2.2, "#e3f5ff"); } // fountain spray
+  dot(16 * T, 11 * T - 8 - Math.abs(Math.sin(t * 4)) * 6, 5, "#cfeeff");
+  for (let i = 0; i < 10; i++) { const a = (Math.sin(t * 2 + i * 1.7) + 1) / 2; ctx.fillStyle = `rgba(255,255,255,${a * 0.7})`; ctx.fillRect((2.4 + ((i * 0.53) % 5)) * T, (15.4 + ((i * 0.37) % 3)) * T, 10, 2); }
+  for (const [k, x, y] of bones().list) if (!(now < (me.pending.get(k) || 0))) drawBone(x, y, t);
+  if (me.aim && !ATTRACT) { ctx.setLineDash([6, 6]); ctx.strokeStyle = "#ffffffaa"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(me.x * T, me.y * T, CONFIG.throwMax * T, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    if (hover) { ctx.strokeStyle = "#ffd23f"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(hover.x * T, hover.y * T, 10 + Math.sin(t * 8) * 2, 0, Math.PI * 2); ctx.stroke(); } }
+  // everyone, sorted top to bottom; balls fly over the top
+  const list = everyone(dt), sprites = [], flying = [];
+  list.push({ id: net.sessionId, name: myLook.n, c: myLook.c, x: me.x, y: me.y, d: me.d, w: me.w, phase: me.phase, mine: true, ball: me.ball, bowl: me.bowl,
+    pet: adopted() ? { ...myPet, tt: (now - myPet.t0) / CONFIG.trickMs, look: save.pet, name: save.name, lv: levelOf(save.xp), happy: now < (myPet.happyUntil || 0) } : null });
+  for (const o of list) {
+    sprites.push({ y: o.y, draw: () => drawPerson(o.x * T, o.y * T + 10, o.c, o.d, o.phase, o.w, hairOf(o.id)) });
+    if (o.pet) sprites.push({ y: o.pet.y, draw: () => drawPet(ctx, o.pet.x * T, o.pet.y * T + 8, o.pet.look, { ...o.pet, collar: o.c, happy: o.pet.happy || o.pet.carry || o.pet.trick || o.pet.anim === "run" }, now) });
+    if (o.bowl) sprites.push({ y: o.bowl.y - 0.1, draw: () => drawBowl(o.bowl.x, o.bowl.y) });
+    if (o.ball && o.ball.s !== "pet") flying.push(o.ball);
+  }
+  sprites.sort((a, b) => a.y - b.y);
+  for (const s of sprites) s.draw();
+  for (const b of flying) drawBall(b, now);
+  for (let i = fx.length - 1; i >= 0; i--) { const p = fx[i], age = (now - p.t0) / 1000; if (age < 0) continue; if (age * 1000 > p.life) { fx.splice(i, 1); continue; } ctx.globalAlpha = 1 - age * 1000 / p.life; drawHeart(p.x + p.vx * age, p.y + p.vy * age, 5, p.col); }
+  ctx.globalAlpha = 1;
+  // name tags, pet tags and bubbles, in screen pixels so they stay readable
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const scr = (x, y) => [(x * T - cam.x) * z + W / 2, (y * T - cam.y) * z + H / 2];
+  for (const o of list) {
+    const [sx, sy] = scr(o.x, o.y), b = said.get(o.id);
+    if (sx < -120 || sx > W + 120 || sy < -80 || sy > H + 120) continue;
+    if (!ATTRACT) label(sx, sy - 42 * z, o.name, o.mine ? "#ffe066" : "#fff", 12);
+    if (b && b.until > now) bubble(sx, sy - (ATTRACT ? 42 : 56) * z, b.text);
+    if (!o.pet) continue;
+    const [px, py] = scr(o.pet.x, o.pet.y), pb = said.get("pet:" + o.id);
+    if (!ATTRACT) label(px, py - 22 * z, `${o.pet.name} ★${o.pet.lv}`, "#ffe9b0", 11);
+    if (pb && pb.until > now) bubble(px, py - 34 * z, pb.text);
+  }
+  for (let i = floats.length - 1; i >= 0; i--) { const f = floats[i], age = (now - f.t0) / 1000; if (age > 1.2) { floats.splice(i, 1); continue; } const [sx, sy] = scr(f.x, f.y); ctx.globalAlpha = 1 - age / 1.2; label(sx, sy - age * 40, f.text, "#ffd23f", 15); ctx.globalAlpha = 1; }
+}
+function label(x, y, text, col, size) { ctx.font = `800 ${size}px system-ui, sans-serif`; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "#000a"; ctx.strokeText(text, x, y); ctx.fillStyle = col; ctx.fillText(text, x, y); }
+function bubble(x, y, text) {
+  ctx.font = "700 13px system-ui, sans-serif"; const w = Math.min(190, ctx.measureText(text).width + 18), h = 24;
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h, w, h, 10); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.fill();
+  ctx.fillStyle = "#2a2238"; ctx.textAlign = "center"; ctx.fillText(text, x, y - 7, 180);
+}
+
+// ── HUD & PANELS ────────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const typing = () => ["petNameIn", "renameIn"].includes(document.activeElement && document.activeElement.id);
+const touchUI = matchMedia("(pointer: coarse)").matches;
+function toast(text) { if (ATTRACT || !text) return; const el = $("toast"); el.textContent = text; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("on"), 2200); }
+function hideHint() { $("hint").style.opacity = 0; }
+function hud() {
+  if (ATTRACT) return;
+  const n = livePlayers().length;
+  $("net").textContent = net.offline ? "Offline: playing with bots" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the park" : ""}`;
+  const ev = net.live && net.live.active && net.live.active[0]; $("event").textContent = ev ? `★ ${ev.title}` : "";
+  for (const id of ["throwBtn", "feedBtn", "trickBtn", "petBtn"]) $(id).disabled = !adopted();
+  if (!adopted()) { $("petName").textContent = "🐾 No pet yet"; $("stats").textContent = ""; return; }
+  const lv = levelOf(save.xp), lo = CONFIG.levels[lv - 1], hi = CONFIG.levels[lv], food = Math.max(0, 1 - (Date.now() - save.fedAt) / CONFIG.hungerMs);
+  $("petName").textContent = `🐾 ${save.name} · Level ${lv}`;
+  $("xpBar").firstChild.style.width = hi ? `${(100 * (save.xp - lo)) / (hi - lo)}%` : "100%";
+  $("foodBar").firstChild.style.width = `${food * 100}%`;
+  $("stats").textContent = `${save.xp} XP · ${Object.keys(save.tricks).filter((k) => save.tricks[k] === true).length} tricks${food < 0.3 ? ` · ${save.name} is hungry!` : ""}`;
+}
+// Adopt: three pets to choose from, or another three.
+let choices = [], chosen = 0;
+function showAdopt() {
+  choices = [randomPet(), randomPet(), randomPet()]; chosen = 0;
+  $("choices").innerHTML = "";
+  choices.forEach((look, i) => {
+    const b = document.createElement("button"), c = document.createElement("canvas"), name = document.createElement("div");
+    c.width = 200; c.height = 150; portrait(c, look); name.textContent = SPECIES[look.s].name;
+    b.append(c, name); b.onclick = () => { chosen = i; for (const x of $("choices").children) x.classList.toggle("on", x === b); };
+    if (!i) b.classList.add("on");
+    $("choices").append(b);
+  });
+  if (!$("petNameIn").value) $("petNameIn").value = pick(PET_NAMES);
+  $("adopt").hidden = false;
+}
+function portrait(c, look) {
+  const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height);
+  g.fillStyle = "#cfeab8"; g.beginPath(); g.ellipse(c.width / 2, c.height * 0.8, c.width * 0.42, c.height * 0.12, 0, 0, Math.PI * 2); g.fill();
+  const s = Math.min(c.width / 60, c.height / 42) / PET_SCALE; g.save(); g.translate(c.width / 2 - 2 * s, c.height * 0.8); g.scale(s, s); drawPet(g, 0, 0, look, { dir: 1, anim: "sit", happy: true, collar: myLook.c }, 0); g.restore();
+}
+function adopt() {
+  const name = $("petNameIn").value.trim().slice(0, 14) || pick(PET_NAMES);
+  save = { ...save, pet: choices[chosen], name, xp: 0, tricks: {}, fedAt: Date.now() - CONFIG.hungerMs * 0.6, cheers: 0 };
+  Object.assign(myPet, newPet(me.x + 0.9, me.y + 0.2), { happyUntil: performance.now() + 3000 });
+  publishLook(); $("adopt").hidden = true; dirty = true; saveNow();
+  toast(`Say hi to ${name}! 🐾`); hearts(myPet.x, myPet.y, 6);
+  $("hint").textContent = touchUI ? "Tap 🎾 Throw, then tap the grass · tap other pets to cheer them" : "Click 🎾 Throw (or press F), then click the grass · click other pets to cheer them";
+  $("hint").style.opacity = 1; setTimeout(hideHint, 14000);
+}
+// Tricks: learned ones can be done; the next one can be taught (a timing game); the rest wait for levels.
+const teach = { id: "", hits: 0, zone: 0.5, width: 0.3, t0: 0, speed: 1.6 };
+function showTricks() {
+  const lv = levelOf(save.xp), next = CONFIG.tricks.find((t) => save.tricks[t.id] !== true);
+  $("trickList").innerHTML = CONFIG.tricks.map((t) => {
+    const known = save.tricks[t.id] === true, canTeach = !known && t === next && t.level <= lv;
+    return `<div class="trick"><div>${t.name}<br><span>${known ? "Learned" : canTeach ? "Ready to learn" : `Level ${t.level}`}</span></div>${known ? `<button data-do="${t.id}">Do it</button>` : canTeach ? `<button data-teach="${t.id}">Teach</button>` : ""}</div>`;
+  }).join("");
+  for (const b of $("trickList").querySelectorAll("button")) b.onclick = () => { if (b.dataset.do) { $("tricks").hidden = true; perform(b.dataset.do); } else startTeach(b.dataset.teach); };
+  $("teach").hidden = true; $("trickList").hidden = false; $("tricks").hidden = false;
+}
+function startTeach(id) {
+  const t = CONFIG.tricks.find((q) => q.id === id);
+  Object.assign(teach, { id, hits: 0, t0: performance.now(), speed: 1.4 + t.level * 0.15, width: Math.max(0.14, 0.3 - t.level * 0.02) }); newZone();
+  $("teachText").textContent = `Teaching ${save.name} to ${t.name.toLowerCase()}: tap Now! when the ball is in the green.`;
+  $("trickList").hidden = true; $("teach").hidden = false; drawHits();
+}
+function newZone() { teach.zone = rnd(0.2, 0.8); $("zone").style.left = `${(teach.zone - teach.width / 2) * 100}%`; $("zone").style.width = `${teach.width * 100}%`; }
+const needleAt = (time) => (Math.sin(((time - teach.t0) / 1000) * teach.speed * Math.PI) + 1) / 2;
+function drawHits() { $("hits").textContent = "🐾".repeat(teach.hits) + "·".repeat(CONFIG.teachHits - teach.hits); }
+function teachTap(e) {
+  e.preventDefault();
+  const pos = needleAt(e.timeStamp || performance.now()); // where the ball was when the finger landed
+  if (Math.abs(pos - teach.zone) <= teach.width / 2) {
+    teach.hits++; drawHits(); addXp(CONFIG.xp.teach, "Good!"); hearts(myPet.x, myPet.y, 2); sfx("yay"); newZone();
+    if (teach.hits >= CONFIG.teachHits) { save.tricks[teach.id] = true; dirty = true; $("tricks").hidden = true; addXp(CONFIG.xp.learn, `✨ ${save.name} learned ${CONFIG.tricks.find((q) => q.id === teach.id).name}!`); setTimeout(() => perform(teach.id), 300); saveNow(); }
+  } else { toast(`${save.name} looks confused. Try again!`); sfx("miss"); }
+}
+function showPetCard() {
+  const lv = levelOf(save.xp), known = CONFIG.tricks.filter((t) => save.tricks[t.id] === true).map((t) => t.name);
+  portrait($("portrait"), save.pet); $("renameIn").value = save.name; $("readopt").textContent = "Adopt a different pet"; $("readopt").dataset.armed = "";
+  $("petStats").innerHTML = `${esc(SPECIES[save.pet.s].name)} · Level ${lv} · ${save.xp} XP<br>Tricks: ${known.length ? esc(known.join(", ")) : "none yet"}<br>Cheers from others: ${save.cheers || 0}`;
+  $("petCard").hidden = false;
+}
+function showTop() {
+  $("topPanel").hidden = false; $("myXp").textContent = adopted() ? `${save.name} has ${save.xp} XP.` : "";
+  const list = $("board");
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li>Loading…</li>";
+  (save.xp ? board.submit(save.xp).catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} XP</span></li>`).join("") : "<li>No pets yet. Be the first!</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+for (const b of document.querySelectorAll("[data-close]")) b.onclick = () => { $(b.dataset.close).hidden = true; };
+$("reroll").onclick = showAdopt; $("adoptGo").onclick = adopt;
+$("throwBtn").onclick = () => { me.aim = !me.aim; $("throwBtn").classList.toggle("on", me.aim); if (me.aim) toast("Tap where to throw"); };
+$("feedBtn").onclick = feed; $("trickBtn").onclick = showTricks; $("petBtn").onclick = showPetCard; $("topBtn").onclick = showTop;
+$("nowBtn").addEventListener("pointerdown", teachTap);
+$("renameIn").addEventListener("change", () => { save.name = $("renameIn").value.trim().slice(0, 14) || save.name; dirty = true; publishLook(); });
+$("readopt").onclick = () => {
+  const b = $("readopt");
+  if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = `Tap again: ${save.name}'s level and tricks start over`; return; }
+  $("petCard").hidden = true; $("petNameIn").value = ""; showAdopt();
+};
+let audio = null;
+function sfx(kind) {
+  if (ATTRACT) return;
+  try {
+    audio = audio || new AudioContext();
+    const notes = { throw: [520, 380], yay: [660, 990], level: [523, 1047], miss: [300, 200] }[kind] || [440, 440], t = audio.currentTime;
+    notes.forEach((f, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.type = "triangle"; o.frequency.setValueAtTime(f, t + i * 0.08); g.gain.setValueAtTime(0.06, t + i * 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.08 + 0.14); o.connect(g).connect(audio.destination); o.start(t + i * 0.08); o.stop(t + i * 0.08 + 0.15); });
+  } catch {}
+}
+/** Two players picked one color at once (or a bot wears it): the later sessionId picks another. */
+function peopleColors() { return Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([id, p]) => field("look:" + id, p.look, {}).c).concat(myLook.c); }
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([id, p]) => ({ id, c: field("look:" + id, p.look, {}).c }));
+  const bots = botLooks().map((b) => b.c);
+  if (!others.some((o) => o.c === myLook.c && o.id < net.sessionId) && !bots.includes(myLook.c)) return;
+  const taken = new Set([...others.map((o) => o.c), ...bots]), c = COLORS.find((col) => !taken.has(col));
+  if (c) { myLook.c = c; publishLook(); }
+}
+
+// ── INPUT ───────────────────────────────────────────────────────────────────────────
+let hover = null;
+/** Screen point -> park tiles, through the camera that drew the last frame. */
+const toWorld = (sx, sy) => ({ x: (sx - W / 2) / cam.z / T + cam.x / T, y: (sy - H / 2) / cam.z / T + cam.y / T });
+const petAt = (w) => everyone().filter((o) => o.pet && Math.hypot(o.pet.x - w.x, o.pet.y - 0.35 - w.y) < 0.6)[0];
+cv.addEventListener("pointerdown", (e) => {
+  e.preventDefault(); if (ATTRACT) return;
+  const w = toWorld(e.clientX, e.clientY);
+  if (me.aim) { throwAt(w.x, w.y); return; }
+  if (adopted() && Math.hypot(myPet.x - w.x, myPet.y - 0.35 - w.y) < 0.6) { patMine(); return; }
+  const o = petAt(w);
+  if (o) { if (dist(me, o.pet) < 2.4) cheer(o); else { me.cheerTo = o.id; me.path = route(me, nearestFree(o.pet.x, o.pet.y + 0.8)); } return; }
+  me.cheerTo = null; me.path = route(me, solid(Math.floor(w.x), Math.floor(w.y)) ? nearestFree(w.x, w.y) : w);
+});
+cv.addEventListener("pointermove", (e) => { hover = toWorld(e.clientX, e.clientY); });
+addEventListener("keydown", (e) => {
+  if (typing()) { if (e.key === "Enter") { e.preventDefault(); document.activeElement.blur(); if (!$("adopt").hidden) adopt(); } return; }
+  const k = e.key.toLowerCase();
+  if (k === "f") throwAt(hover ? hover.x : me.x + (me.d === 1 ? -4 : 4), hover ? hover.y : me.y);
+  if (k === "e") feed();
+  if (k === "t" && adopted()) { if ($("tricks").hidden) showTricks(); else $("tricks").hidden = true; }
+  if (k === " " && !$("teach").hidden && !$("tricks").hidden) teachTap(e);
+  if (k >= "1" && k <= "8") perform(CONFIG.tricks[+k - 1].id);
+  if (k.startsWith("arrow") || k === " ") e.preventDefault();
+  keys.add(k);
+});
+addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
+document.addEventListener("touchmove", (e) => { if (e.target === cv) e.preventDefault(); }, { passive: false });
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+const parkPic = paintPark();
+let last = performance.now(), lastHb = 0, lastHud = 0;
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // the first frame can be stamped before `last`
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
+  if (isHost()) hostTick(dt, now); else host.was = false;
+  myTick(dt, now);
+  draw(now, dt);
+  if (!$("teach").hidden && !$("tricks").hidden) $("needle").style.left = `${needleAt(now) * 100}%`;
+  if (now - lastHud > 200) { lastHud = now; hud(); submitScore(false); }
+  requestAnimationFrame(frame);
+}
+
+(async function start() {
+  document.body.classList.toggle("attract", ATTRACT);
+  if (ATTRACT) $("net").textContent = "";
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.on("grab", (m, from) => { if (isHost() && m && typeof m.k === "string") applyGrab(from, m.k); });
+  net.on("pat", (m, from) => onPat(m, from));
+  net.onDisconnect(() => { $("net").textContent = "Reconnecting…"; });
+  let name = ""; try { name = localStorage.getItem("mpa-name") || ""; } catch {}
+  myLook.n = name || pick(["Sunny", "Happy", "Cosy", "Lucky", "Merry", "Jolly"]) + " " + pick(["Walker", "Friend", "Pal", "Buddy", "Hiker"]);
+  const taken = new Set(peopleColors().slice(0, -1).concat(botLooks().map((b) => b.c)));
+  myLook.c = COLORS.find((c) => !taken.has(c)) || pick(COLORS);
+  me.x += rnd(-1.5, 1.5);
+  net.me.set({ hb: Date.now() });
+  if (ATTRACT) { save = { ...save, pet: randomPet(), name: pick(PET_NAMES), xp: 300, fedAt: Date.now() }; Object.assign(myPet, newPet(me.x + 1, me.y)); }
+  else if (!applySave(local.get())) showAdopt();
+  publishLook();
+  if (!net.offline && typeof MP !== "undefined") {
+    player = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }); board = player.leaderboard(CONFIG.board);
+    player.getPlayer().then(loadAccountSave).then((s) => { if (s && s.at > (save.at || 0) && applySave(s)) toast(`👋 Welcome back, ${save.name}!`); }).catch(() => {});
+  }
+  setInterval(() => { if (dirty) saveNow(); }, CONFIG.saveEveryMs);
+  addEventListener("pagehide", () => { if (dirty) saveNow(); });
+  if (adopted() && !ATTRACT) { $("hint").textContent = touchUI ? "Tap 🎾 Throw, then tap the grass · tap other pets to cheer them" : "Click 🎾 Throw (or press F), then click the grass · click other pets to cheer them"; setTimeout(hideHint, 12000); }
+  cam.x = (ATTRACT ? 16 : me.x) * T; cam.y = (ATTRACT ? 11 : me.y) * T;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

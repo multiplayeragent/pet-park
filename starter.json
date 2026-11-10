@@ -1,0 +1,23 @@
+{
+  "name": "Pet Park",
+  "genre": "sim",
+  "dim": "2D",
+  "mode": "Drop-in",
+  "players": "2–20",
+  "hook": "Adopt a pet, teach it tricks, show it off.",
+  "how": "Pick and name a pet, then play fetch, feed it and teach it tricks to level it up. Show off in the park: other owners cheer your pet and you can cheer theirs. Your pet and its tricks are saved for next time.",
+  "controls": "Tap or click to walk, Throw then tap the grass, tap a pet to cheer it; WASD, F to throw, E to feed, T for tricks",
+  "uses": [
+    ["Saves", "Your pet, its name, level and tricks are saved to your player, and to this browser offline."],
+    ["Bots", "Bot owners walk their pets, play fetch, show off tricks and cheer yours until people arrive."],
+    ["Host-run rules", "The host's browser hides bones in the grass and decides whose pet got each one; if it leaves, the next player takes over."],
+    ["Live sync", "Everyone sees every pet run, fetch and do its tricks."],
+    ["Leaderboard", "The pets with the most XP."],
+    ["Live ops", "Turn on double XP or show an event with no new deploy."]
+  ],
+  "ideas": [
+    "Add a dog show where pets compete with tricks",
+    "Let pets wear hats and bandanas",
+    "Add a frisbee that two pets can chase"
+  ]
+}
