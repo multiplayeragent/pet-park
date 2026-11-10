@@ -989,6 +989,7 @@ document.addEventListener("touchmove", (e) => { if (e.target === cv) e.preventDe
 const parkPic = paintPark();
 let last = performance.now(), lastHb = 0, lastHud = 0;
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // the first frame can be stamped before `last`
   if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
   if (isHost()) hostTick(dt, now); else host.was = false;
@@ -996,7 +997,6 @@ function frame(now) {
   draw(now, dt);
   if (!$("teach").hidden && !$("tricks").hidden) $("needle").style.left = `${needleAt(now) * 100}%`;
   if (now - lastHud > 200) { lastHud = now; hud(); submitScore(false); }
-  requestAnimationFrame(frame);
 }
 
 (async function start() {
