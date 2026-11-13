@@ -18,7 +18,7 @@
   #saved { font-size: 12px; opacity: 0; transition: opacity .5s; } #saved.on { opacity: .85; }
   #right { top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); text-align: right; max-width: 40vw; }
   #net { font-size: 12px; font-weight: 600; } #event { font-size: 13px; font-weight: 800; color: #ffe066; }
-  #toast { z-index: 5; top: 22%; left: 16px; right: 16px; text-align: center; font-size: 20px; font-weight: 800; opacity: 0; transition: opacity .35s; }
+  #toast { z-index: 5; top: 22%; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 32px); padding: 6px 14px; border-radius: 14px; background: #2a2238cc; text-align: center; font-size: 20px; font-weight: 800; opacity: 0; transition: opacity .35s; } /* a dark pill: readable over the grass and over the light cards */
   #toast.on { opacity: 1; }
   #hint { left: 16px; right: 16px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 74px); text-align: center; font-size: 15px; font-weight: 700; transition: opacity .8s; }
   #bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
@@ -42,6 +42,7 @@
   #needle { position: absolute; top: 3px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; background: #ff8a3d; box-shadow: 0 2px 4px #0004; }
   #hits { font-size: 22px; letter-spacing: 4px; }
   .card ol { text-align: left; margin: 12px 0; padding-left: 26px; font-size: 14px; min-height: 40px; } .card li span { float: right; }
+  .card li.note { list-style: none; color: #8a809c; }
   [hidden] { display: none !important; }
   .attract .hud, .attract #bar { display: none !important; }
 </style>
@@ -90,7 +91,7 @@
   <button class="go" data-close="petCard">Close</button>
 </div></div>
 <div class="panel" id="topPanel" hidden><div class="card">
-  <h2>Top pets</h2><p>Pet XP, all time</p><ol id="board"><li>Loading…</li></ol><p id="myXp"></p>
+  <h2>Top pets</h2><p>Pet XP, all time</p><ol id="board"><li class="note">Loading…</li></ol><p id="myXp"></p>
   <button class="go" data-close="topPanel">Back to the park</button>
 </div></div>
 <script>
@@ -406,6 +407,7 @@ function petStep(pet, owner, ball, bowl, dt, now, speed, hooks) {
   pet.anim = "idle";
   if (pet.trick) { if (now - pet.t0 < CONFIG.trickMs) return; pet.trick = ""; }
   const go = (tx, ty, near) => {
+    if (solid(Math.floor(tx), Math.floor(ty))) ({ x: tx, y: ty } = nearestFree(tx, ty)); // beside its owner can be a bench or a tree: go to the closest free spot, or it would wait there forever with the ball
     if (Math.hypot(tx - pet.x, ty - pet.y) <= near) { pet.route = null; return true; }
     if (!clearLine(pet, tx, ty)) { // something in the way: follow a route around it
       const key = Math.floor(tx) + "," + Math.floor(ty);
@@ -577,7 +579,7 @@ const adopted = () => !!save.pet;
 const hungry = () => Date.now() - save.fedAt > CONFIG.hungerMs * 0.7;
 function myTick(dt, now) {
   let mx = 0, my = 0;
-  if (!typing()) { mx = (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0); my = (keys.has("s") || keys.has("arrowdown") ? 1 : 0) - (keys.has("w") || keys.has("arrowup") ? 1 : 0); }
+  if (!typing() && !panelOpen()) { mx = (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0); my = (keys.has("s") || keys.has("arrowdown") ? 1 : 0) - (keys.has("w") || keys.has("arrowup") ? 1 : 0); }
   if (ATTRACT) autopilot(now);
   if (mx || my) {
     me.path = []; me.cheerTo = null;
@@ -743,11 +745,10 @@ const botLooks = () => (isHost() ? [...host.bots.values()].map((b) => ({ i: b.id
 let heardK = -1, lastHeard = 0; // the last bot line I showed (-1: none yet, so old lines don't pop up when I arrive)
 /** Everyone but me: other live players and the bots, each with their pet (others eased toward their last spot). */
 function everyone(dt = 0) {
-  const out = [], live = new Set(livePlayers()), now = performance.now(), k = 1 - Math.pow(0.002, dt), hostNow = isHost();
+  const out = [], live = new Set(livePlayers()), now = performance.now(), hostNow = isHost();
   const add = (id, q, info, eased) => {
-    let v = views.get(id); if (!v) { v = { x: q.x, y: q.y, px: q.px, py: q.py, phase: 0, pphase: 0, tkk: q.tkk, tt0: -1e9 }; views.set(id, v); }
-    const e = eased ? k : 1;
-    if (dt || !eased) { v.x += (q.x - v.x) * e; v.y += (q.y - v.y) * e; v.px += (q.px - v.px) * e; v.py += (q.py - v.py) * e; }
+    let v = views.get(id); if (!v) { v = { x: q.x, y: q.y, px: q.px, py: q.py, phase: 0, pphase: 0, tkk: q.tkk, tt0: -1e9, m: { x: q.x, y: q.y, at: now, spd: 0 }, pm: { x: q.px, y: q.py, at: now, spd: 0 } }; views.set(id, v); }
+    if (dt || !eased) { glide(v, "x", "y", v.m, q.x, q.y, now, eased ? dt : 0); glide(v, "px", "py", v.pm, q.px, q.py, now, eased ? dt : 0); }
     if (q.w) v.phase += dt * 11; if (q.pa === "run") v.pphase += dt * 16;
     if (q.tkk !== v.tkk) { v.tkk = q.tkk; v.tt0 = now; }
     const look = cleanPet(info.pet);
@@ -771,6 +772,15 @@ function everyone(dt = 0) {
     heardK = Math.max(heardK, lastHeard);
   }
   return out;
+}
+/** Walk a drawn person or pet toward its last reported spot at the speed it was really going (from the last two
+ *  reports), so others glide at an even pace between updates instead of surging. dt 0 = jump there. */
+function glide(v, kx, ky, m, tx, ty, now, dt) {
+  if (tx !== m.x || ty !== m.y) { const gap = Math.max(0.05, Math.min(0.5, (now - m.at) / 1000)); m.spd = Math.hypot(tx - m.x, ty - m.y) / gap; m.x = tx; m.y = ty; m.at = now; }
+  const dx = tx - v[kx], dy = ty - v[ky], d = Math.hypot(dx, dy);
+  if (!dt || d > 4) { v[kx] = tx; v[ky] = ty; return; } // a jump (respawn, a new host's first update): no slide across the park
+  const s = Math.min(d, Math.max(m.spd * 1.1, d * 3) * dt);
+  if (d > 1e-4) { v[kx] += (dx / d) * s; v[ky] += (dy / d) * s; }
 }
 /** A ball someone else threw, flown on my own clock from the moment I first saw it. */
 function ballFor(id, b, now) {
@@ -838,6 +848,7 @@ function bubble(x, y, text) {
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const typing = () => ["petNameIn", "renameIn"].includes(document.activeElement && document.activeElement.id);
+const panelOpen = () => [...document.querySelectorAll(".panel")].some((p) => !p.hidden); // adopt, tricks, pet card or top pets
 const touchUI = matchMedia("(pointer: coarse)").matches;
 function toast(text) { if (ATTRACT || !text) return; const el = $("toast"); el.textContent = text; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("on"), 2200); }
 function hideHint() { $("hint").style.opacity = 0; }
@@ -920,11 +931,11 @@ function showPetCard() {
 function showTop() {
   $("topPanel").hidden = false; $("myXp").textContent = adopted() ? `${save.name} has ${save.xp} XP.` : "";
   const list = $("board");
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
-  list.innerHTML = "<li>Loading…</li>";
+  if (!board) { list.innerHTML = `<li class="note">Leaderboards need a connection.</li>`; return; } // status lines are "note"s: not numbered like entries
+  list.innerHTML = `<li class="note">Loading…</li>`;
   (save.xp ? board.submit(save.xp).catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} XP</span></li>`).join("") : "<li>No pets yet. Be the first!</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} XP</span></li>`).join("") : `<li class="note">No pets yet. Be the first!</li>`;
+  }).catch(() => { list.innerHTML = `<li class="note">Couldn't load the leaderboard.</li>`; });
 }
 for (const b of document.querySelectorAll("[data-close]")) b.onclick = () => { $(b.dataset.close).hidden = true; };
 $("reroll").onclick = showAdopt; $("adoptGo").onclick = adopt;
@@ -961,8 +972,9 @@ let hover = null;
 /** Screen point -> park tiles, through the camera that drew the last frame. */
 const toWorld = (sx, sy) => ({ x: (sx - W / 2) / cam.z / T + cam.x / T, y: (sy - H / 2) / cam.z / T + cam.y / T });
 const petAt = (w) => everyone().filter((o) => o.pet && Math.hypot(o.pet.x - w.x, o.pet.y - 0.35 - w.y) < 0.6)[0];
+cv.addEventListener("contextmenu", (e) => e.preventDefault()); // a right-click doesn't open the browser menu over the park
 cv.addEventListener("pointerdown", (e) => {
-  e.preventDefault(); if (ATTRACT) return;
+  e.preventDefault(); if (ATTRACT || e.button > 0) return; // only a left click or a tap walks or throws
   const w = toWorld(e.clientX, e.clientY);
   if (me.aim) { throwAt(w.x, w.y); return; }
   if (adopted() && Math.hypot(myPet.x - w.x, myPet.y - 0.35 - w.y) < 0.6) { patMine(); return; }
@@ -973,13 +985,14 @@ cv.addEventListener("pointerdown", (e) => {
 cv.addEventListener("pointermove", (e) => { hover = toWorld(e.clientX, e.clientY); });
 addEventListener("keydown", (e) => {
   if (typing()) { if (e.key === "Enter") { e.preventDefault(); document.activeElement.blur(); if (!$("adopt").hidden) adopt(); } return; }
-  const k = e.key.toLowerCase();
+  const k = e.key.toLowerCase(), open = panelOpen();
+  if (k.startsWith("arrow") || k === " ") e.preventDefault();
+  if (k === "t" && adopted()) { if (!$("tricks").hidden) $("tricks").hidden = true; else if (!open) showTricks(); }
+  if (k === " " && !e.repeat && !$("teach").hidden && !$("tricks").hidden) teachTap(e); // holding Space doesn't tap for you
+  if (open) return; // a card is open: keys don't walk, throw, feed or do tricks behind it
   if (k === "f") throwAt(hover ? hover.x : me.x + (me.d === 1 ? -4 : 4), hover ? hover.y : me.y);
   if (k === "e") feed();
-  if (k === "t" && adopted()) { if ($("tricks").hidden) showTricks(); else $("tricks").hidden = true; }
-  if (k === " " && !$("teach").hidden && !$("tricks").hidden) teachTap(e);
   if (k >= "1" && k <= "8") perform(CONFIG.tricks[+k - 1].id);
-  if (k.startsWith("arrow") || k === " ") e.preventDefault();
   keys.add(k);
 });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
