@@ -25,7 +25,7 @@
          width: min(470px, calc(100vw - 24px)); box-sizing: border-box; }
   button { min-height: 48px; border: 0; border-radius: 14px; background: #fffaf2; color: #2a2238; font: 700 14px system-ui, sans-serif; box-shadow: 0 2px 6px #0003; cursor: pointer; touch-action: manipulation; }
   #bar button { padding: 4px 2px; line-height: 1.1; } #bar button b { display: block; font-size: 20px; }
-  #bar button.on { background: #ffd23f; } #bar button:disabled { opacity: .5; }
+  #bar button.on { background: #ffd23f; } #bar button:disabled { opacity: .5; } #nowBtn:disabled { opacity: .5; }
   .panel { position: fixed; inset: 0; display: grid; place-items: center; background: #2a223866; }
   .card { width: min(380px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; box-sizing: border-box; padding: 18px; border-radius: 18px; background: #fffaf2; text-align: center; box-shadow: 0 10px 30px #0005; }
   .card h2 { margin: 0 0 4px; font-size: 22px; } .card p { margin: 6px 0; font-size: 14px; color: #5d5470; }
@@ -144,6 +144,7 @@ const CONFIG = {
   hungerMs: 600000,        // ms from a full belly to an empty one
   trickMs: 1600,           // how long a trick takes
   teachHits: 3,            // good taps to learn a trick
+  teachMissMs: 700,        // after a mistimed tap, Now! does nothing for this long (so mashing it doesn't teach)
   showOffRange: 6,         // tiles: a trick earns "show off" XP when another pet is this close
   xpBoost: 1,              // every XP gain is multiplied by this (live config: xpBoost)
   xp: { fetch: 5, catch: 4, feed: 3, teach: 3, learn: 10, show: 3, cheer: 3, bone: 6, pat: 1 },
@@ -542,15 +543,16 @@ function botStep(b, dt, now, people) {
     caught: () => botSay(b, "Nice catch, " + b.pet.name + "!"), fetched: () => { b.ball = null; b.until = Math.min(b.until, now + rnd(400, 1200)); },
     ate: () => { b.bowl = null; }, bone: (pet, k) => boneFor(pet, k), grab: (k) => applyGrab(b.id, k),
   });
+  const pets = people.concat([...host.bots.values()].filter((o) => o !== b).map((o) => ({ id: o.id, pet: o.pet }))); // people's pets first, then other bots'
   if (b.cheerTo) { // walking over to cheer someone's pet
-    const o = people.find((p) => p.id === b.cheerTo);
+    const o = pets.find((p) => p.id === b.cheerTo);
     if (!o || !o.pet) b.cheerTo = null;
     else if (dist(b, o.pet) < 2.4) { b.path = []; botSay(b, pick(["What a cute pet!", "Aww, " + o.pet.name + "!", "So fluffy!", "Hello " + o.pet.name + "!"])); sendPat(o.id, b.id); b.cheerTo = null; b.until = now + rnd(1500, 3000); }
     else if (!b.path.length) b.path = route(b, nearestFree(o.pet.x + rnd(-1, 1), o.pet.y + 1));
     return;
   }
   if (b.path.length || now < b.until || b.ball || b.bowl || b.pet.trick) return;
-  const r = Math.random(), fan = people.find((o) => o.pet && dist(o.pet, b) < 9 && Math.random() < 0.5);
+  const r = Math.random(), fan = pets.find((o) => o.pet && dist(o.pet, b) < 9 && Math.random() < (host.bots.has(o.id) ? 0.25 : 0.5));
   if (r < 0.42) { // play fetch
     const to = nearestFree(b.x + rnd(-6, 6) + (ATTRACT ? (16 - b.x) * 0.6 : 0), b.y + rnd(-4, 4) + (ATTRACT ? (11 - b.y) * 0.6 : 0));
     if (dist(to, b) > 2) { b.ball = makeBall(++b.ballK, { x: b.x, y: b.y - 0.2 }, to, now); b.d = to.x < b.x ? 1 : 2; if (Math.random() < 0.3) botSay(b, "Fetch!"); }
@@ -560,7 +562,7 @@ function botStep(b, dt, now, people) {
     Object.assign(b.pet, { trick: t.id, t0: now, tkk: b.pet.tkk + 1, mode: "follow" }); botSay(b, `${b.pet.name}, ${t.name.toLowerCase()}!`);
     b.until = now + rnd(2200, 4000);
   } else if (r < 0.7 && !b.bowl) { b.bowl = { x: b.x + 0.8, y: b.y + 0.3 }; b.until = now + 3000; }
-  else if (r < 0.8 && fan && !ATTRACT) { b.cheerTo = fan.id; }
+  else if (r < 0.8 && fan) { b.cheerTo = fan.id; }
   else { const poi = pick(POIS); b.path = route(b, nearestFree(poi.x + rnd(-2, 2), poi.y + rnd(-1, 1))); b.until = now + rnd(800, 2500); if (Math.random() < 0.15) botSay(b, pick(CONFIG.botLines)); }
 }
 function step(a, speed, dt) {
@@ -647,6 +649,7 @@ function cheer(o) {
 /** A "pat" arrived (or I sent one): hearts over that pet; if it's mine, count the cheer. */
 function onPat(m, from) {
   if (!m || typeof m.to !== "string") return;
+  if (m.by && !botLooks().some((l) => l.i === m.by)) return; // only the host's bots cheer "by" someone else: a made-up name doesn't count
   const o = m.to === net.sessionId ? { pet: myPet } : everyone().find((p) => p.id === m.to);
   if (o && o.pet) hearts(o.pet.x, o.pet.y, 5);
   if (isHost() && host.bots.has(m.to) && !m.by && Math.random() < 0.6) botSay(host.bots.get(m.to), pick(["Thank you!", "Aww, thanks!", host.bots.get(m.to).pet.name + " likes you!"]));
@@ -895,7 +898,7 @@ function adopt() {
   $("hint").style.opacity = 1; setTimeout(hideHint, 14000);
 }
 // Tricks: learned ones can be done; the next one can be taught (a timing game); the rest wait for levels.
-const teach = { id: "", hits: 0, zone: 0.5, width: 0.3, t0: 0, speed: 1.6 };
+const teach = { id: "", hits: 0, zone: 0.5, width: 0.3, t0: 0, speed: 1.6, waitUntil: 0 };
 function showTricks() {
   const lv = levelOf(save.xp), next = CONFIG.tricks.find((t) => save.tricks[t.id] !== true);
   $("trickList").innerHTML = CONFIG.tricks.map((t) => {
@@ -916,11 +919,12 @@ const needleAt = (time) => (Math.sin(((time - teach.t0) / 1000) * teach.speed * 
 function drawHits() { $("hits").textContent = "🐾".repeat(teach.hits) + "·".repeat(CONFIG.teachHits - teach.hits); }
 function teachTap(e) {
   e.preventDefault();
+  if (performance.now() < teach.waitUntil) return; // still confused from the last miss
   const pos = needleAt(e.timeStamp || performance.now()); // where the ball was when the finger landed
   if (Math.abs(pos - teach.zone) <= teach.width / 2) {
     teach.hits++; drawHits(); addXp(CONFIG.xp.teach, "Good!"); hearts(myPet.x, myPet.y, 2); sfx("yay"); newZone();
     if (teach.hits >= CONFIG.teachHits) { save.tricks[teach.id] = true; dirty = true; $("tricks").hidden = true; addXp(CONFIG.xp.learn, `✨ ${save.name} learned ${CONFIG.tricks.find((q) => q.id === teach.id).name}!`); setTimeout(() => perform(teach.id), 300); saveNow(); }
-  } else { toast(`${save.name} looks confused. Try again!`); sfx("miss"); }
+  } else { teach.waitUntil = performance.now() + CONFIG.teachMissMs; $("nowBtn").disabled = true; setTimeout(() => { $("nowBtn").disabled = false; }, CONFIG.teachMissMs); toast(`${save.name} looks confused. Try again!`); sfx("miss"); }
 }
 function showPetCard() {
   const lv = levelOf(save.xp), known = CONFIG.tricks.filter((t) => save.tricks[t.id] === true).map((t) => t.name);
